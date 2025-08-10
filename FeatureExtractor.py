@@ -148,32 +148,117 @@ if __name__ == '__main__':
     print("\nFirst 5 rows of the new dataset:")
     print(final_df.head())
 
-    # --- Generate and Save Plots ---
+    # --- Generating Beautiful, Comparable Plots ---
+    # --- Generating Polished, Continuous-Looking Plots ---
     print("\n--- Generating Plots ---")
 
-    # Separate data into benign and malicious
-    benign_urls = final_df[final_df['label'] == 0]
-    malicious_urls = final_df[final_df['label'] == 1]
+    import numpy as np
+    from scipy.stats import gaussian_kde
+    import matplotlib.pyplot as plt
 
-    # Plot 1: Frequency Distribution of URL Length for Benign URLs
-    plt.figure(figsize=(10, 6))
-    plt.hist(benign_urls['url_length'], bins=50, color='green', alpha=0.7)
-    plt.title('Frequency Distribution of URL Length - Benign URLs')
-    plt.xlabel('URL Length')
-    plt.ylabel('Frequency')
-    plt.grid(True)
-    plt.savefig('url_length_distribution_benign.png')
-    print("Saved 'url_length_distribution_benign.png'")
+    # Always-White backgrounds (no surprises on export)
+    plt.rcParams.update({
+        "figure.dpi": 140,
+        "savefig.dpi": 240,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 11,
+        "axes.titlesize": 13,
+        "figure.autolayout": True,
+        "savefig.facecolor": "white",
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+    })
 
+    # Data
+    benign = final_df[final_df['label'] == 0]['url_length'].dropna().to_numpy()
+    mal = final_df[final_df['label'] == 1]['url_length'].dropna().to_numpy()
 
-    # Plot 2: Frequency Distribution of URL Length for Malicious URLs
-    plt.figure(figsize=(10, 6))
-    plt.hist(malicious_urls['url_length'], bins=50, color='red', alpha=0.7)
-    plt.title('Frequency Distribution of URL Length - Malicious URLs')
-    plt.xlabel('URL Length')
-    plt.ylabel('Frequency')
-    plt.grid(True)
-    plt.savefig('url_length_distribution_malicious.png')
-    print("Saved 'url_length_distribution_malicious.png'")
+    def freedman_diaconis_bins(x):
+        x = np.asarray(x); x = x[~np.isnan(x)]
+        n = x.size
+        if n < 2: return 30
+        iqr = np.subtract(*np.percentile(x, [75, 25]))
+        if iqr == 0:
+            return min(100, max(30, int(np.sqrt(n))))
+        h = 2 * iqr * (n ** (-1/3))
+        if h <= 0: return min(100, max(30, int(np.sqrt(n))))
+        bins = int(np.ceil((x.max() - x.min()) / h))
+        return max(40, min(100, bins))  # keep things visually smooth
 
-    print("\n--- All tasks completed ---")
+    def annotate_box(ax, data, label):
+        med = np.median(data)
+        p10, p90 = np.percentile(data, [10, 90])
+        ax.axvline(med, linestyle="--", linewidth=1, alpha=0.9, label=f"Median = {med:.0f}")
+        # Anchor in axes coords (no "floating")
+        txt = f"{label}\nN={len(data):,}\nP10={p10:.0f}, P90={p90:.0f}"
+        ax.text(0.02, 0.98, txt, transform=ax.transAxes, va="top", ha="left",
+                fontsize=9, bbox=dict(boxstyle="round", facecolor="white", alpha=0.85))
+
+    def nice_hist(ax, data, title, bins=None):
+        if bins is None: bins = freedman_diaconis_bins(data)
+        # Continuous look: no edges, slightly higher alpha
+        ax.hist(data, bins=bins, density=True, alpha=0.95, edgecolor="none")
+        # Smooth overlay for readability (KDE)
+        xs = np.linspace(*np.percentile(data, [1, 99]), 400)
+        try:
+            kde = gaussian_kde(data)
+            ax.plot(xs, kde(xs), linewidth=1.6)
+        except Exception:
+            pass
+        ax.set_title(title)
+        ax.set_xlabel("URL Length (characters)")
+        ax.set_ylabel("Density")
+        ax.grid(True, alpha=0.25, linestyle="--")
+
+    # Shared x-range for fair compare
+    lo = np.percentile(np.concatenate([benign, mal]), 1)
+    hi = np.percentile(np.concatenate([benign, mal]), 99)
+
+    # 1) Side-by-side comparison
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    nice_hist(axes[0], benign, "Benign URLs — Length")
+    annotate_box(axes[0], benign, "Benign")
+    nice_hist(axes[1], mal, "Malicious URLs — Length")
+    annotate_box(axes[1], mal, "Malicious")
+
+    for ax in axes:
+        ax.set_xlim(lo, hi)
+        ax.legend(frameon=False, loc="upper right")
+    fig.suptitle("URL Length Distributions by Class", y=1.02, fontsize=14, fontweight="bold")
+    fig.savefig("url_length_distribution_compare.png", bbox_inches="tight")  # no transparency
+    print("Saved 'url_length_distribution_compare.png'")
+
+    # 2) Per-class polished exports
+    plt.figure(figsize=(8, 5))
+    ax = plt.gca()
+    nice_hist(ax, benign, "Frequency Distribution of URL Length — Benign")
+    annotate_box(ax, benign, "Benign")
+    ax.set_xlim(lo, hi)
+    ax.legend(frameon=False, loc="upper right")
+    plt.savefig("url_length_distribution_benign.png", bbox_inches="tight")
+    print("Saved 'url_length_distribution_benign.png' (enhanced)")
+
+    plt.figure(figsize=(8, 5))
+    ax = plt.gca()
+    nice_hist(ax, mal, "Frequency Distribution of URL Length — Malicious")
+    annotate_box(ax, mal, "Malicious")
+    ax.set_xlim(lo, hi)
+    ax.legend(frameon=False, loc="upper right")
+    plt.savefig("url_length_distribution_malicious.png", bbox_inches="tight")
+    print("Saved 'url_length_distribution_malicious.png' (enhanced)")
+
+    # 3) CDF comparison (white bg, clean legend)
+    plt.figure(figsize=(8, 5))
+    for data, lbl in [(benign, "Benign"), (mal, "Malicious")]:
+        vals = np.sort(data); y = np.linspace(0, 1, len(vals), endpoint=True)
+        plt.step(vals, y, where="post", linewidth=1.6, label=lbl)
+    plt.xlim(lo, hi)
+    plt.xlabel("URL Length (characters)")
+    plt.ylabel("Cumulative probability")
+    plt.title("URL Length — CDF Comparison")
+    plt.grid(True, alpha=0.25, linestyle="--")
+    plt.legend(frameon=False)
+    plt.savefig("url_length_cdf_compare.png", bbox_inches="tight")
+    print("Saved 'url_length_cdf_compare.png'")
+
+    print("\n--- Plotting complete ---")
