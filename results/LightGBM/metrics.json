@@ -1,0 +1,10 @@
+{
+  "model": "LightGBM",
+  "samples_evaluated": 400001,
+  "accuracy": 0.934233,
+  "precision": 0.932268,
+  "recall": 0.936505,
+  "f1_score": 0.934382,
+  "auc_roc": 0.976,
+  "timestamp": "2025-08-10T11:22:40.639864+00:00"
+}

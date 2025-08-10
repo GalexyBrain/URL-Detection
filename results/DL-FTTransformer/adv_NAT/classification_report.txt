@@ -1,0 +1,18 @@
+Samples (evaluated):	50000
+Accuracy:		0.93362
+Precision:		0.930957
+Recall:			0.936226
+F1-Score:		0.933584
+AUC-ROC Score:		0.974022
+============================================
+
+Detailed Classification Report
+------------------------------
+              precision    recall  f1-score   support
+
+           0     0.9363    0.9310    0.9337     25084
+           1     0.9310    0.9362    0.9336     24916
+
+    accuracy                         0.9336     50000
+   macro avg     0.9336    0.9336    0.9336     50000
+weighted avg     0.9336    0.9336    0.9336     50000

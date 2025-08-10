@@ -1,0 +1,11 @@
+{
+  "model": "LightGBM",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.93462,
+  "precision": 0.93386,
+  "recall": 0.935022,
+  "f1_score": 0.93444,
+  "auc_roc": 0.975676,
+  "timestamp": "2025-08-10T12:56:59.169792+00:00"
+}

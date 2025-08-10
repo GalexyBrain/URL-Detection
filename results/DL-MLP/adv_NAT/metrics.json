@@ -1,0 +1,11 @@
+{
+  "model": "DL-MLP",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.9339,
+  "precision": 0.933938,
+  "recall": 0.933376,
+  "f1_score": 0.933657,
+  "auc_roc": 0.974697,
+  "timestamp": "2025-08-10T12:49:25.569630+00:00"
+}

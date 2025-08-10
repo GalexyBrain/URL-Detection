@@ -1,0 +1,11 @@
+{
+  "model": "AdaBoost",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.6287,
+  "precision": 0.579529,
+  "recall": 0.928721,
+  "f1_score": 0.713702,
+  "auc_roc": 0.750155,
+  "timestamp": "2025-08-10T13:02:43.945808+00:00"
+}

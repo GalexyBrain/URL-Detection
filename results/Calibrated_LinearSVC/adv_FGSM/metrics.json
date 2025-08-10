@@ -1,0 +1,11 @@
+{
+  "model": "Calibrated_LinearSVC",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.1517,
+  "precision": 0.232177,
+  "recall": 0.304423,
+  "f1_score": 0.263437,
+  "auc_roc": 0.091802,
+  "timestamp": "2025-08-10T12:52:16.075153+00:00"
+}

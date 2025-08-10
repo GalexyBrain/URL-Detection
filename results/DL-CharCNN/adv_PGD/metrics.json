@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharCNN",
+  "attack": "PGD",
+  "samples_evaluated": 30000,
+  "accuracy": 0.379767,
+  "precision": 0.428627,
+  "recall": 0.744283,
+  "f1_score": 0.54398,
+  "auc_roc": 0.104183,
+  "timestamp": "2025-08-10T12:50:29.508804+00:00"
+}

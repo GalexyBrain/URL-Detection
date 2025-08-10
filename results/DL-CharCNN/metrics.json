@@ -1,0 +1,10 @@
+{
+  "model": "DL-CharCNN",
+  "samples_evaluated": 400001,
+  "accuracy": 0.9718,
+  "precision": 0.990835,
+  "recall": 0.95241,
+  "f1_score": 0.971242,
+  "auc_roc": 0.994782,
+  "timestamp": "2025-08-10T11:41:19.802313+00:00"
+}

@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharCNN",
+  "attack": "FGSM",
+  "samples_evaluated": 30000,
+  "accuracy": 0.779633,
+  "precision": 0.744549,
+  "recall": 0.847361,
+  "f1_score": 0.792635,
+  "auc_roc": 0.893863,
+  "timestamp": "2025-08-10T12:50:11.204090+00:00"
+}

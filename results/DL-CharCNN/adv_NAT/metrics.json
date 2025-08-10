@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharCNN",
+  "attack": "NAT",
+  "samples_evaluated": 30000,
+  "accuracy": 0.972167,
+  "precision": 0.991893,
+  "recall": 0.951781,
+  "f1_score": 0.971423,
+  "auc_roc": 0.99458,
+  "timestamp": "2025-08-10T12:50:06.681671+00:00"
+}

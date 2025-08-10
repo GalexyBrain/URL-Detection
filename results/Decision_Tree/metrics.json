@@ -1,0 +1,10 @@
+{
+  "model": "Decision Tree",
+  "samples_evaluated": 400001,
+  "accuracy": 0.93296,
+  "precision": 0.931446,
+  "recall": 0.934715,
+  "f1_score": 0.933077,
+  "auc_roc": 0.973068,
+  "timestamp": "2025-08-10T10:57:15.700626+00:00"
+}

@@ -1,0 +1,8 @@
+{
+  "tokenizer": "byte",
+  "vocab_size": 258,
+  "pad_id": 256,
+  "cls_id": 257,
+  "use_cls_token": true,
+  "max_len": 113
+}

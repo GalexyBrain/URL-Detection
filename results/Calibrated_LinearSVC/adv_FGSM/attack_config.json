@@ -1,0 +1,17 @@
+{
+  "attack": "FGSM",
+  "cfg": {
+    "eps_tab_fgsm": 0.5,
+    "eps_tab_pgd": 0.5,
+    "alpha_tab_pgd": 0.05,
+    "steps_tab_pgd": 10,
+    "eps_lin_fgsm": 0.5,
+    "eps_lin_pgd": 0.5,
+    "alpha_lin_pgd": 0.05,
+    "steps_lin_pgd": 10,
+    "char_topk_per_step": 1,
+    "char_steps_fgsm": 1,
+    "char_steps_pgd": 5,
+    "freeze_cls_pos0": true
+  }
+}

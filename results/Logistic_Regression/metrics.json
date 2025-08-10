@@ -1,0 +1,10 @@
+{
+  "model": "Logistic Regression",
+  "samples_evaluated": 400001,
+  "accuracy": 0.908008,
+  "precision": 0.924815,
+  "recall": 0.888225,
+  "f1_score": 0.906151,
+  "auc_roc": 0.95684,
+  "timestamp": "2025-08-10T10:56:22.878413+00:00"
+}

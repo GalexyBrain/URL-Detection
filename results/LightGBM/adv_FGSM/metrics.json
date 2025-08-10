@@ -1,0 +1,11 @@
+{
+  "model": "LightGBM",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.57744,
+  "precision": 0.548095,
+  "recall": 0.866271,
+  "f1_score": 0.671395,
+  "auc_roc": 0.526005,
+  "timestamp": "2025-08-10T12:57:58.828899+00:00"
+}

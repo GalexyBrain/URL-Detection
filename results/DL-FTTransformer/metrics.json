@@ -1,0 +1,10 @@
+{
+  "model": "DL-FTTransformer",
+  "samples_evaluated": 400001,
+  "accuracy": 0.933075,
+  "precision": 0.928923,
+  "recall": 0.937915,
+  "f1_score": 0.933397,
+  "auc_roc": 0.97414,
+  "timestamp": "2025-08-10T11:36:02.675163+00:00"
+}
