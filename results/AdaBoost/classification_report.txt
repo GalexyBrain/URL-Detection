@@ -1,10 +1,12 @@
+Performance Analysis for: AdaBoost
+===============================
 Samples (evaluated):	400001
 Accuracy:		0.926855
 Precision:		0.92585
 Recall:			0.928035
 F1-Score:		0.926941
 AUC-ROC Score:		0.963583
-================================
+===============================
 
 Detailed Classification Report
 ------------------------------

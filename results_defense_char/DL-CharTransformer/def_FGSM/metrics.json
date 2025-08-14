@@ -1,0 +1,10 @@
+{
+  "model": "DL-CharTransformer",
+  "attack": "FGSM",
+  "timestamp": "2025-08-13T15:49:46.253082+00:00",
+  "samples": 2000000,
+  "coverage_accept_rate": 0.2405775,
+  "detector_auc": NaN,
+  "classification_accuracy_on_accepted": 0.755241034593842,
+  "classification_auc_on_accepted": 0.8025035033532865
+}

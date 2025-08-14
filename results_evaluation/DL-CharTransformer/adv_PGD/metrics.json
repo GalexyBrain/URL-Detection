@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharTransformer",
+  "attack": "PGD",
+  "samples_evaluated": 30000,
+  "accuracy": 0.210633,
+  "precision": 0.269332,
+  "recall": 0.343371,
+  "f1_score": 0.301878,
+  "auc_roc": 0.090782,
+  "timestamp": "2025-08-12T17:09:00.682789+00:00"
+}

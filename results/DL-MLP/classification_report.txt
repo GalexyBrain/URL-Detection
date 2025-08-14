@@ -1,18 +1,20 @@
+Performance Analysis for: DL-MLP
+===============================
 Samples (evaluated):	400001
-Accuracy:		0.93337
-Precision:		0.93219
-Recall:			0.934735
-F1-Score:		0.933461
-AUC-ROC Score:		0.974921
-==============================
+Accuracy:		0.933543
+Precision:		0.931216
+Recall:			0.93624
+F1-Score:		0.933721
+AUC-ROC Score:		0.97487
+===============================
 
 Detailed Classification Report
 ------------------------------
               precision    recall  f1-score   support
 
-           0     0.9346    0.9320    0.9333    200001
-           1     0.9322    0.9347    0.9335    200000
+           0     0.9359    0.9308    0.9334    200001
+           1     0.9312    0.9362    0.9337    200000
 
-    accuracy                         0.9334    400001
-   macro avg     0.9334    0.9334    0.9334    400001
-weighted avg     0.9334    0.9334    0.9334    400001
+    accuracy                         0.9335    400001
+   macro avg     0.9336    0.9335    0.9335    400001
+weighted avg     0.9336    0.9335    0.9335    400001

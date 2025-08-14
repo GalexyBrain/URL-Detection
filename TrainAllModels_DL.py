@@ -1,23 +1,22 @@
 """
-All-in-one Deep Learning trainer (Python 3.13+).
-- Tabular DL: DL-MLP, DL-FTTransformer (from features_extracted.csv)
-- URL Text DL: DL-CharCNN, DL-CharTransformer (from merged_url_dataset.csv)
-- Uses GPU if available + mixed precision.
-- Early stopping on validation AUC.
-- Saves artifacts compatible with your ML pipeline:
+All-in-one Deep Learning trainer (Python 3.13+), single-source dataset.
+- Source: features_extracted.csv (must contain: url, numeric features, label {0,1})
+- Tabular DL: DL-MLP, DL-FTTransformer (uses numeric features only)
+- URL Text DL: DL-CharCNN, DL-CharTransformer (uses the same file's `url` column)
+- Shared stratified 70/10/20 split across ALL models (tabular & text)
+- Uses GPU if available + mixed precision; early stopping on validation AUC.
+- Artifacts:
     models/<ModelName>/model.pt
-    results/<ModelName>/{metrics.json, classification_report.txt, confusion_matrix.png, roc_curve.png}
+    results/<ModelName>/{metrics.json, classification_report.txt, confusion_matrix.png, roc_curve.png, test_with_preds.csv}
 - Global artifacts:
-    models/_global/scaler.joblib
-    models/_global/feature_columns.json
-    models/_global/url_tokenizer.json
+    models/_global/{scaler.joblib, feature_columns.json, url_tokenizer.json, split_indices.json}
 """
 
 from pathlib import Path
 from datetime import datetime, timezone
 import os, gc, json, math, warnings
 
-# Less CUDA fragmentation; must be set before first CUDA alloc
+# Less CUDA fragmentation; set before any CUDA alloc
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import numpy as np
@@ -50,25 +49,20 @@ if torch.cuda.is_available():
 
 # ---------------- Config ----------------
 CONFIG = {
-    # ---- Tabular (numeric features) ----
-    "tabular_csv": "features_extracted.csv",  # numeric engineered features + label (0/1)
+    "dataset_csv": "features_extracted.csv",  # ONE file for both tabular & text
     "label_col": "label",
-    "url_col": "url",  # ignored by tabular models if present
+    "url_col": "url",
 
-    # ---- URL text (raw url,label) ----
-    "url_csv": "merged_url_dataset.csv",      # raw URL + label (benign/malicious)
-
-    # ---- I/O ----
     "models_dir": "models",
     "results_dir": "results",
     "random_state": 42,
 
-    # ---- Split: 70/10/20 ----
+    # Shared split: 70/10/20
     "train_ratio": 0.70,
     "val_ratio":   0.10,
     "test_ratio":  0.20,
 
-    # ---- Training ----
+    # Training
     "epochs_tabular": 10,
     "epochs_text": 5,
 
@@ -76,22 +70,21 @@ CONFIG = {
     "batch_size_gpu_tabular": 8192,
     "batch_size_cpu_tabular": 8192,
 
-    # Text batch sizes (per model; tuned for 4GB GPUs)
+    # Text batch sizes (per model; adjust if OOM)
     "batch_size_gpu_text_cnn": 4096,
     "batch_size_gpu_text_transformer": 1024,
     "batch_size_cpu_text": 8192,
 
-    # Gradient accumulation (simulates larger effective batch without OOM)
     "grad_accum_tabular": 1,
     "grad_accum_text": 4,
 
     "lr": 3e-4,
     "weight_decay": 1e-5,
-    "patience": 5,       # tabular early stopping
-    "patience_text": 4,  # text early stopping
+    "patience": 5,        # tabular early stopping
+    "patience_text": 4,   # text early stopping
     "min_delta_auc": 1e-4,
 
-    # ---- URL tokenizer ----
+    # URL tokenizer
     "max_len_cap": 256,
     "use_cls_token": True,
 }
@@ -175,6 +168,44 @@ def cleanup_cuda():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+# -------------- Label / Text utils --------------
+PAD_ID = 256
+CLS_ID = 257
+VOCAB_SIZE = 258
+
+def map_label(v):
+    if isinstance(v, (int, np.integer)):
+        return int(v)
+    s = str(v).strip().lower()
+    return 1 if s in {"1","true","malicious","phishing","malware","bad"} else 0
+
+def pick_max_len(urls, cap=256, use_cls=True):
+    lens = [len(u.encode("utf-8","ignore")) for u in urls]
+    p99 = int(np.percentile(lens, 99)) if lens else 32
+    return int(np.clip(p99 + (1 if use_cls else 0) + 1, 32, cap))
+
+def encode_url(u: str, max_len: int, use_cls=True):
+    b = u.encode("utf-8", "ignore")
+    if use_cls:
+        b = b[:max_len-1]
+        ids = [CLS_ID] + [x for x in b]
+    else:
+        b = b[:max_len]
+        ids = [x for x in b]
+    if len(ids) < max_len:
+        ids += [PAD_ID] * (max_len - len(ids))
+    else:
+        ids = ids[:max_len]
+    ids = [i if i >= 256 else max(0, min(255, i)) for i in ids]
+    return np.array(ids, dtype=np.int64)
+
+class URLDataset(Dataset):
+    def __init__(self, urls, labels, max_len, use_cls=True):
+        self.X = np.stack([encode_url(u, max_len, use_cls) for u in urls])
+        self.y = np.array([map_label(y) for y in labels], dtype=np.int64)
+    def __len__(self): return self.X.shape[0]
+    def __getitem__(self, i): return self.X[i], self.y[i]
+
 # -------------- Tabular DL Models --------------
 class MLPNet(nn.Module):
     def __init__(self, in_dim: int, hidden=(256, 128, 64), p_drop=0.2):
@@ -214,43 +245,6 @@ class FTTransformer(nn.Module):
         return self.head(z).squeeze(-1)
 
 # -------------- URL Text DL Models --------------
-PAD_ID = 256
-CLS_ID = 257
-VOCAB_SIZE = 258
-
-def map_label(v):
-    if isinstance(v, (int, np.integer)):
-        return int(v)
-    s = str(v).strip().lower()
-    return 1 if s in {"1","true","malicious","phishing","malware","bad"} else 0
-
-def pick_max_len(urls, cap=256, use_cls=True):
-    lens = [len(u.encode("utf-8","ignore")) for u in urls]
-    p99 = int(np.percentile(lens, 99))
-    return int(np.clip(p99 + (1 if use_cls else 0) + 1, 32, cap))
-
-def encode_url(u: str, max_len: int, use_cls=True):
-    b = u.encode("utf-8", "ignore")
-    if use_cls:
-        b = b[:max_len-1]
-        ids = [CLS_ID] + [x for x in b]
-    else:
-        b = b[:max_len]
-        ids = [x for x in b]
-    if len(ids) < max_len:
-        ids += [PAD_ID] * (max_len - len(ids))
-    else:
-        ids = ids[:max_len]
-    ids = [i if i >= 256 else max(0, min(255, i)) for i in ids]
-    return np.array(ids, dtype=np.int64)
-
-class URLDataset(Dataset):
-    def __init__(self, urls, labels, max_len, use_cls=True):
-        self.X = np.stack([encode_url(u, max_len, use_cls) for u in urls])
-        self.y = np.array([map_label(y) for y in labels], dtype=np.int64)
-    def __len__(self): return self.X.shape[0]
-    def __getitem__(self, i): return self.X[i], self.y[i]
-
 class CharCNN(nn.Module):
     def __init__(self, vocab_size=VOCAB_SIZE, d_model=64, p_drop=0.2):
         super().__init__()
@@ -288,7 +282,7 @@ class CharTransformer(nn.Module):
         pooled = z[:,0,:] if (x_ids[:,0]==CLS_ID).all() else z.mean(dim=1)
         return self.head(pooled).squeeze(-1)
 
-# -------------- Training Loops --------------
+# -------------- Train / Eval --------------
 @torch.no_grad()
 def infer_proba_scalar(model, loader, device, is_text: bool):
     model.eval()
@@ -344,7 +338,6 @@ def train_model(name, model, train_loader, val_loader, test_loader, device, out_
 
             running += raw_loss.item() * xb.size(0)
 
-        # flush leftover grads if any
         if step % max(1, grad_accum) != 0:
             scaler.step(opt); scaler.update(); opt.zero_grad(set_to_none=True)
 
@@ -381,6 +374,7 @@ def train_model(name, model, train_loader, val_loader, test_loader, device, out_
     metrics_to_files(name, test_y, test_pred, test_probs, Path(out_res_dir))
     print(f"[OK] Saved model -> {out_model_dir}")
     print(f"[OK] Saved results -> {out_res_dir}")
+    return test_y, test_pred, test_probs
 
 # -------------- Main --------------
 def main():
@@ -393,145 +387,161 @@ def main():
     results_root = ensure_dir(Path(cfg["results_dir"]))
     global_dir = ensure_dir(models_root / "_global")
 
-    # ===================== Tabular DL =====================
-    tab_csv = Path(cfg["tabular_csv"])
-    if tab_csv.exists():
-        print(f"\n[Tabular] Loading {tab_csv} ...")
-        df_tab = pd.read_csv(tab_csv)
+    # ===== Load single dataset =====
+    csv_path = Path(cfg["dataset_csv"])
+    assert csv_path.exists(), f"{csv_path} not found."
+    df = pd.read_csv(csv_path)
 
-        # Map label to {0,1} robustly (handles 'benign'/'malicious' etc.)
-        assert cfg["label_col"] in df_tab.columns, f"Missing label column: {cfg['label_col']}"
-        df_tab[cfg["label_col"]] = df_tab[cfg["label_col"]].apply(map_label).astype(np.int64)
+    # Robust label mapping
+    assert cfg["label_col"] in df.columns, f"Missing label column: {cfg['label_col']}"
+    df[cfg["label_col"]] = df[cfg["label_col"]].apply(map_label).astype(np.int64)
+    assert set(np.unique(df[cfg["label_col"]])) <= {0,1}, "Labels must map to {0,1}"
 
-        # Ignore raw URL column for tabular features
-        drop_cols = []
-        if cfg["url_col"] in df_tab.columns:
-            print(f"[Tabular] Found '{cfg['url_col']}' column; ignoring for tabular models.")
-            drop_cols.append(cfg["url_col"])
-        df_feat = df_tab.drop(columns=drop_cols + [cfg["label_col"]], errors="ignore")
+    # Sanity for URL column
+    assert cfg["url_col"] in df.columns, f"Missing URL column '{cfg['url_col']}' in {csv_path}"
 
-        # Keep numeric-only features; coerce others; clean NaN/inf
-        df_feat = df_feat.apply(pd.to_numeric, errors="coerce")
-        df_feat = df_feat.replace([np.inf, -np.inf], np.nan)
-        if df_feat.isna().any().any():
-            df_feat = df_feat.fillna(df_feat.median(numeric_only=True))
+    # ===== Build ONE stratified split of indices (shared by all models) =====
+    y_all = df[cfg["label_col"]].to_numpy(dtype=np.int64)
+    idx_all = np.arange(len(df))
+    idx_tr, idx_tmp, y_tr, y_tmp = train_test_split(
+        idx_all, y_all, test_size=(1.0 - cfg["train_ratio"]), random_state=rs, stratify=y_all
+    )
+    idx_val, idx_te, y_val, y_te = train_test_split(
+        idx_tmp, y_tmp,
+        test_size=(cfg["test_ratio"] / (cfg["val_ratio"] + cfg["test_ratio"])),
+        random_state=rs, stratify=y_tmp
+    )
+    save_json({"train_idx": idx_tr.tolist(), "val_idx": idx_val.tolist(), "test_idx": idx_te.tolist()},
+              global_dir / "split_indices.json")
+    print(f"[SPLIT] Sizes -> train {len(idx_tr)}, val {len(idx_val)}, test {len(idx_te)}")
+    print(f"[SPLIT] Class weights (train): {compute_class_weight('balanced', classes=np.array([0,1]), y=y_tr)}")
 
-        feature_cols = df_feat.columns.tolist()
-        X_all = df_feat.to_numpy(dtype=np.float32)
-        y_all = df_tab[cfg["label_col"]].to_numpy(dtype=np.int64)
-        assert set(np.unique(y_all)) <= {0,1}, "Tabular labels must be {0,1}"
+    # ===== Tabular (numeric features) =====
+    print("\n[Tabular] Preparing numeric features...")
+    # Numeric-only features; drop label & (optionally) url if numeric is enforced
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if cfg["label_col"] not in num_cols:
+        raise ValueError(f"Label column '{cfg['label_col']}' must be numeric after mapping.")
+    feature_cols = [c for c in num_cols if c != cfg["label_col"]]
+    save_json({"feature_columns": feature_cols}, global_dir / "feature_columns.json")
 
-        # global scaler: load if present, else fit+save (consistent with ML script)
-        scaler_path = global_dir / "scaler.joblib"
-        if scaler_path.exists():
-            scaler = joblib.load(scaler_path)
-            print("[Tabular] Loaded existing global scaler.")
-            X_all = scaler.transform(X_all)
-        else:
-            scaler = StandardScaler()
-            X_all = scaler.fit_transform(X_all)
-            joblib.dump(scaler, scaler_path)
-            print("[Tabular] Fitted and saved new global scaler.")
-        save_json({"feature_columns": feature_cols}, global_dir / "feature_columns.json")
-
-        # split
-        X_tr, X_tmp, y_tr, y_tmp = train_test_split(X_all, y_all, test_size=(1.0-cfg["train_ratio"]), random_state=rs, stratify=y_all)
-        X_val, X_te, y_val, y_te = train_test_split(X_tmp, y_tmp, test_size=(cfg["test_ratio"]/(cfg["val_ratio"]+cfg["test_ratio"])), random_state=rs, stratify=y_tmp)
-        print(f"[Tabular] Shapes -> train {X_tr.shape}, val {X_val.shape}, test {X_te.shape}")
-        cls_w = compute_class_weight("balanced", classes=np.array([0,1]), y=y_tr)
-        print(f"[Tabular] Class weights (0,1): {cls_w}")
-
-        bs_tab = cfg["batch_size_gpu_tabular"] if device.type=="cuda" else cfg["batch_size_cpu_tabular"]
-        train_loader = DataLoader(TensorDataset(torch.from_numpy(X_tr), torch.from_numpy(y_tr)), batch_size=bs_tab, shuffle=True, num_workers=4, pin_memory=(device.type=="cuda"))
-        val_loader   = DataLoader(TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-        test_loader  = DataLoader(TensorDataset(torch.from_numpy(X_te), torch.from_numpy(y_te)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-
-        # DL-MLP
-        name = "DL-MLP"
-        mdl = MLPNet(in_dim=X_all.shape[1], hidden=(256,128,64), p_drop=0.2).to(device)
-        train_model(name, mdl, train_loader, val_loader, test_loader, device,
-                    models_root / safe_name(name), results_root / safe_name(name),
-                    cfg, is_text=False, patience=cfg["patience"], epochs=cfg["epochs_tabular"],
-                    grad_accum=cfg["grad_accum_tabular"])
-        del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
-
-        # DL-FTTransformer
-        name = "DL-FTTransformer"
-        bs_tab = cfg["batch_size_gpu_tabular"] if device.type=="cuda" else cfg["batch_size_cpu_tabular"]
-        train_loader = DataLoader(TensorDataset(torch.from_numpy(X_tr), torch.from_numpy(y_tr)), batch_size=bs_tab, shuffle=True, num_workers=4, pin_memory=(device.type=="cuda"))
-        val_loader   = DataLoader(TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-        test_loader  = DataLoader(TensorDataset(torch.from_numpy(X_te), torch.from_numpy(y_te)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-        mdl = FTTransformer(n_features=X_all.shape[1], d_model=64, n_heads=8, n_layers=3, p_drop=0.1).to(device)
-        train_model(name, mdl, train_loader, val_loader, test_loader, device,
-                    models_root / safe_name(name), results_root / safe_name(name),
-                    cfg, is_text=False, patience=cfg["patience"], epochs=cfg["epochs_tabular"],
-                    grad_accum=cfg["grad_accum_tabular"])
-        del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
+    X_all = df.loc[:, feature_cols].to_numpy(dtype=np.float32)
+    # Global scaler (reuse if present for consistency with sklearn pipeline)
+    scaler_path = global_dir / "scaler.joblib"
+    if scaler_path.exists():
+        scaler = joblib.load(scaler_path); print("[Tabular] Loaded existing global scaler.")
+        X_all = scaler.transform(X_all)
     else:
-        print(f"[Tabular] Skipped: {tab_csv} not found.")
+        scaler = StandardScaler()
+        X_all = scaler.fit_transform(X_all)
+        joblib.dump(scaler, scaler_path)
+        print("[Tabular] Fitted & saved global scaler.")
 
-    # ===================== URL Text DL =====================
-    url_csv = Path(cfg["url_csv"])
-    if url_csv.exists():
-        print(f"\n[Text] Loading {url_csv} ...")
-        df_url = pd.read_csv(url_csv)
-        assert "url" in df_url.columns and "label" in df_url.columns, "URL CSV must have columns: url,label"
+    X_tr = X_all[idx_tr]; X_val = X_all[idx_val]; X_te = X_all[idx_te]
+    y_tr = y_all[idx_tr]; y_val = y_all[idx_val]; y_te = y_all[idx_te]
 
-        urls = df_url["url"].astype(str).tolist()
-        labels = [map_label(v) for v in df_url["label"].tolist()]
-        y_all = np.array(labels, dtype=np.int64)
-        assert set(np.unique(y_all)) <= {0,1}, "URL labels must map to {0,1}"
+    bs_tab = cfg["batch_size_gpu_tabular"] if device.type=="cuda" else cfg["batch_size_cpu_tabular"]
+    train_loader = DataLoader(TensorDataset(torch.from_numpy(X_tr), torch.from_numpy(y_tr)), batch_size=bs_tab, shuffle=True,  num_workers=4, pin_memory=(device.type=="cuda"))
+    val_loader   = DataLoader(TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
+    test_loader  = DataLoader(TensorDataset(torch.from_numpy(X_te), torch.from_numpy(y_te)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
 
-        max_len = pick_max_len(urls, cap=cfg["max_len_cap"], use_cls=cfg["use_cls_token"])
-        print(f"[Text] Using max_len={max_len} (cap={cfg['max_len_cap']})")
-        save_json({
-            "tokenizer": "byte", "vocab_size": VOCAB_SIZE,
-            "pad_id": PAD_ID, "cls_id": CLS_ID,
-            "use_cls_token": bool(cfg["use_cls_token"]),
-            "max_len": int(max_len)
-        }, global_dir / "url_tokenizer.json")
+    # ---- DL-MLP ----
+    name = "DL-MLP"
+    mdl = MLPNet(in_dim=X_all.shape[1], hidden=(256,128,64), p_drop=0.2).to(device)
+    y_true, y_pred, y_prob = train_model(
+        name, mdl, train_loader, val_loader, test_loader, device,
+        models_root / safe_name(name), results_root / safe_name(name),
+        cfg, is_text=False, patience=cfg["patience"], epochs=cfg["epochs_tabular"],
+        grad_accum=cfg["grad_accum_tabular"]
+    )
+    pd.DataFrame({
+        "url": df.loc[idx_te, cfg["url_col"]].values,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "y_score": y_prob
+    }).to_csv((results_root / safe_name(name) / "test_with_preds.csv"), index=False)
+    del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
 
-        # split
-        U_tr, U_tmp, y_tr, y_tmp = train_test_split(urls, y_all, test_size=(1.0-cfg["train_ratio"]), random_state=rs, stratify=y_all)
-        U_val, U_te, y_val, y_te = train_test_split(U_tmp, y_tmp, test_size=(cfg["test_ratio"]/(cfg["val_ratio"]+cfg["test_ratio"])), random_state=rs, stratify=y_tmp)
-        print(f"[Text] Sizes -> train {len(U_tr)}, val {len(U_val)}, test {len(U_te)}")
-        cls_w = compute_class_weight("balanced", classes=np.array([0,1]), y=y_tr)
-        print(f"[Text] Class weights (0,1): {cls_w}")
+    # ---- DL-FTTransformer ----
+    name = "DL-FTTransformer"
+    train_loader = DataLoader(TensorDataset(torch.from_numpy(X_tr), torch.from_numpy(y_tr)), batch_size=bs_tab, shuffle=True,  num_workers=4, pin_memory=(device.type=="cuda"))
+    val_loader   = DataLoader(TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
+    test_loader  = DataLoader(TensorDataset(torch.from_numpy(X_te), torch.from_numpy(y_te)), batch_size=bs_tab, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
+    mdl = FTTransformer(n_features=X_all.shape[1], d_model=64, n_heads=8, n_layers=3, p_drop=0.1).to(device)
+    y_true, y_pred, y_prob = train_model(
+        name, mdl, train_loader, val_loader, test_loader, device,
+        models_root / safe_name(name), results_root / safe_name(name),
+        cfg, is_text=False, patience=cfg["patience"], epochs=cfg["epochs_tabular"],
+        grad_accum=cfg["grad_accum_tabular"]
+    )
+    pd.DataFrame({
+        "url": df.loc[idx_te, cfg["url_col"]].values,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "y_score": y_prob
+    }).to_csv((results_root / safe_name(name) / "test_with_preds.csv"), index=False)
+    del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
 
-        # Build shared datasets once (so we can vary batch size per model)
-        ds_train = URLDataset(U_tr, y_tr, max_len, cfg["use_cls_token"])
-        ds_val   = URLDataset(U_val, y_val, max_len, cfg["use_cls_token"])
-        ds_test  = URLDataset(U_te, y_te, max_len, cfg["use_cls_token"])
+    # ===== URL Text (same dataset, `url` column) =====
+    print("\n[Text] Preparing URL byte-token inputs from the same dataset...")
+    urls = df.loc[:, cfg["url_col"]].astype(str).tolist()
+    max_len = pick_max_len(urls, cap=cfg["max_len_cap"], use_cls=cfg["use_cls_token"])
+    save_json({
+        "tokenizer": "byte", "vocab_size": VOCAB_SIZE,
+        "pad_id": PAD_ID, "cls_id": CLS_ID,
+        "use_cls_token": bool(cfg["use_cls_token"]),
+        "max_len": int(max_len)
+    }, global_dir / "url_tokenizer.json")
+    print(f"[Text] max_len={max_len} (cap={cfg['max_len_cap']})")
 
-        # -------- DL-CharCNN --------
-        name = "DL-CharCNN"
-        bs_txt = cfg["batch_size_gpu_text_cnn"] if device.type=="cuda" else cfg["batch_size_cpu_text"]
-        train_loader = DataLoader(ds_train, batch_size=bs_txt, shuffle=True,  num_workers=4, pin_memory=(device.type=="cuda"))
-        val_loader   = DataLoader(ds_val,   batch_size=bs_txt, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-        test_loader  = DataLoader(ds_test,  batch_size=bs_txt, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
-        mdl = CharCNN(vocab_size=VOCAB_SIZE, d_model=64, p_drop=0.2).to(device)
-        train_model(name, mdl, train_loader, val_loader, test_loader, device,
-                    models_root / safe_name(name), results_root / safe_name(name),
-                    cfg, is_text=True, patience=cfg["patience_text"], epochs=cfg["epochs_text"],
-                    grad_accum=cfg["grad_accum_text"])
-        del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
+    # Build datasets using the SAME indices
+    ds_train = URLDataset(df.loc[idx_tr, cfg["url_col"]].tolist(), y_tr, max_len, cfg["use_cls_token"])
+    ds_val   = URLDataset(df.loc[idx_val, cfg["url_col"]].tolist(), y_val, max_len, cfg["use_cls_token"])
+    ds_test  = URLDataset(df.loc[idx_te, cfg["url_col"]].tolist(), y_te, max_len, cfg["use_cls_token"])
 
-        # -------- DL-CharTransformer --------
-        name = "DL-CharTransformer"
-        bs_txt = cfg["batch_size_gpu_text_transformer"] if device.type=="cuda" else cfg["batch_size_cpu_text"]
-        train_loader = DataLoader(ds_train, batch_size=bs_txt, shuffle=True,  num_workers=2, pin_memory=(device.type=="cuda"))
-        val_loader   = DataLoader(ds_val,   batch_size=bs_txt, shuffle=False, num_workers=2, pin_memory=(device.type=="cuda"))
-        test_loader  = DataLoader(ds_test,  batch_size=bs_txt, shuffle=False, num_workers=2, pin_memory=(device.type=="cuda"))
-        mdl = CharTransformer(vocab_size=VOCAB_SIZE, d_model=96, n_heads=6, n_layers=4, max_len=max_len, p_drop=0.1).to(device)
-        train_model(name, mdl, train_loader, val_loader, test_loader, device,
-                    models_root / safe_name(name), results_root / safe_name(name),
-                    cfg, is_text=True, patience=cfg["patience_text"], epochs=cfg["epochs_text"],
-                    grad_accum=cfg["grad_accum_text"])
-        del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
-    else:
-        print(f"[Text] Skipped: {url_csv} not found.")
+    # ---- DL-CharCNN ----
+    name = "DL-CharCNN"
+    bs_txt = cfg["batch_size_gpu_text_cnn"] if device.type=="cuda" else cfg["batch_size_cpu_text"]
+    train_loader = DataLoader(ds_train, batch_size=bs_txt, shuffle=True,  num_workers=4, pin_memory=(device.type=="cuda"))
+    val_loader   = DataLoader(ds_val,   batch_size=bs_txt, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
+    test_loader  = DataLoader(ds_test,  batch_size=bs_txt, shuffle=False, num_workers=4, pin_memory=(device.type=="cuda"))
+    mdl = CharCNN(vocab_size=VOCAB_SIZE, d_model=64, p_drop=0.2).to(device)
+    y_true, y_pred, y_prob = train_model(
+        name, mdl, train_loader, val_loader, test_loader, device,
+        models_root / safe_name(name), results_root / safe_name(name),
+        cfg, is_text=True, patience=cfg["patience_text"], epochs=cfg["epochs_text"],
+        grad_accum=cfg["grad_accum_text"]
+    )
+    pd.DataFrame({
+        "url": df.loc[idx_te, cfg["url_col"]].values,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "y_score": y_prob
+    }).to_csv((results_root / safe_name(name) / "test_with_preds.csv"), index=False)
+    del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
 
-    print("\n[DONE] All DL models trained and artifacts saved.")
+    # ---- DL-CharTransformer ----
+    name = "DL-CharTransformer"
+    bs_txt = cfg["batch_size_gpu_text_transformer"] if device.type=="cuda" else cfg["batch_size_cpu_text"]
+    train_loader = DataLoader(ds_train, batch_size=bs_txt, shuffle=True,  num_workers=2, pin_memory=(device.type=="cuda"))
+    val_loader   = DataLoader(ds_val,   batch_size=bs_txt, shuffle=False, num_workers=2, pin_memory=(device.type=="cuda"))
+    test_loader  = DataLoader(ds_test,  batch_size=bs_txt, shuffle=False, num_workers=2, pin_memory=(device.type=="cuda"))
+    mdl = CharTransformer(vocab_size=VOCAB_SIZE, d_model=96, n_heads=6, n_layers=4, max_len=max_len, p_drop=0.1).to(device)
+    y_true, y_pred, y_prob = train_model(
+        name, mdl, train_loader, val_loader, test_loader, device,
+        models_root / safe_name(name), results_root / safe_name(name),
+        cfg, is_text=True, patience=cfg["patience_text"], epochs=cfg["epochs_text"],
+        grad_accum=cfg["grad_accum_text"]
+    )
+    pd.DataFrame({
+        "url": df.loc[idx_te, cfg["url_col"]].values,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "y_score": y_prob
+    }).to_csv((results_root / safe_name(name) / "test_with_preds.csv"), index=False)
+    del mdl, train_loader, val_loader, test_loader; cleanup_cuda()
+
+    print("\n[DONE] All DL models trained (single consistent dataset & splits).")
 
 if __name__ == "__main__":
     main()

@@ -1,19 +1,20 @@
 """
-Adversarial evaluation for your trained models (Python 3.13+).
+Adversarial evaluation (single-source dataset: features_extracted.csv).
 
+- Uses ONLY features_extracted.csv (has: url, numeric features, label {0,1})
+- Reuses the SAME split as training via models/_global/split_indices.json
 - Tabular white-box FGSM/PGD: DL-MLP, DL-FTTransformer, Logistic_Regression, Calibrated_LinearSVC
 - Tabular black-box via transfer (surrogate + fine-tune): Decision_Tree, Random_Forest,
   LightGBM, XGBoost, AdaBoost, Gaussian_Naive_Bayes
 - URL text models: DL-CharCNN, DL-CharTransformer using HotFlip-style FGSM/PGD in token space
+- Scaler & tokenizer loaded from models/_global
 
-Artifacts (per model and per attack):
-  results/<ModelName>/adv_{NAT|FGSM|PGD}/
+Artifacts (per model & attack):
+  results_evaluation/<ModelName>/adv_{NAT|FGSM|PGD}/
       metrics.json, classification_report.txt, confusion_matrix.png, roc_curve.png, attack_config.json
 
 Global artifacts used:
-  models/_global/scaler.joblib
-  models/_global/feature_columns.json
-  models/_global/url_tokenizer.json
+  models/_global/{scaler.joblib, feature_columns.json, url_tokenizer.json, split_indices.json}
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 
-# Optional libs (teachers were trained with these already)
+# Optional libs (teachers may exist)
 try:
     import lightgbm as lgb  # noqa: F401
 except Exception:
@@ -69,21 +70,20 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # -------------------------------------------------------------------
-# Config
+# Config (ONE dataset)
 # -------------------------------------------------------------------
 CFG = {
     "models_dir": "models",
-    "results_dir": "results",
+    "results_dir": "results_evaluation",
 
-    # Data files
-    "tabular_csv": "features_extracted.csv",      # numeric features + label
-    "url_csv":     "merged_url_dataset.csv",      # url,label (strings)
+    # Single source for both tabular & URL models
+    "dataset_csv": "features_extracted.csv",
 
     # Columns
     "label_col": "label",
     "url_col": "url",
 
-    # Split for attack evaluation subset (we only need val/test)
+    # Split (used only if split_indices.json missing)
     "train_ratio": 0.70,
     "val_ratio":   0.10,
     "test_ratio":  0.20,
@@ -202,50 +202,80 @@ def cleanup_cuda():
         torch.cuda.empty_cache()
 
 # -------------------------------------------------------------------
-# Data loading / label mapping
+# Data loading / label mapping (SINGLE SOURCE)
 # -------------------------------------------------------------------
 def map_label(v):
     if isinstance(v, (int, np.integer)): return int(v)
     s = str(v).strip().lower()
     return 1 if s in {"1","true","malicious","phishing","malware","bad"} else 0
 
-def load_tabular_scaled(cfg: dict):
-    models_root = Path(cfg["models_dir"])
-    global_dir = models_root / "_global"
+def load_split_indices(global_dir: Path, y_all: np.ndarray, cfg: dict):
+    split_path = global_dir / "split_indices.json"
+    if split_path.exists():
+        info = json.loads(split_path.read_text(encoding="utf-8"))
+        return np.array(info["train_idx"]), np.array(info["val_idx"]), np.array(info["test_idx"])
+    # Fallback (keeps things working if trainer wasn’t run)
+    idx_all = np.arange(len(y_all))
+    idx_tr, idx_tmp, y_tr, y_tmp = train_test_split(
+        idx_all, y_all, test_size=(1.0 - cfg["train_ratio"]),
+        random_state=cfg["random_state"], stratify=y_all
+    )
+    idx_val, idx_te, _, _ = train_test_split(
+        idx_tmp, y_tmp,
+        test_size=(cfg["test_ratio"] / (cfg["val_ratio"] + cfg["test_ratio"])),
+        random_state=cfg["random_state"], stratify=y_tmp
+    )
+    save_json({"train_idx": idx_tr.tolist(), "val_idx": idx_val.tolist(), "test_idx": idx_te.tolist()}, split_path)
+    return idx_tr, idx_val, idx_te
 
-    df = pd.read_csv(cfg["tabular_csv"])
+def load_tabular_scaled_from_df(df: pd.DataFrame, cfg: dict, global_dir: Path):
+    # 1) Labels
     assert cfg["label_col"] in df.columns, "label column missing"
     y = df[cfg["label_col"]].apply(map_label).astype(np.int64).to_numpy()
 
-    # Drop any url column and keep numeric only
-    drop = []
-    if cfg["url_col"] in df.columns: drop.append(cfg["url_col"])
-    X_df = df.drop(columns=drop + [cfg["label_col"]], errors="ignore").apply(pd.to_numeric, errors="coerce")
-    X_df = X_df.replace([np.inf, -np.inf], np.nan)
-    if X_df.isna().any().any():
-        X_df = X_df.fillna(X_df.median(numeric_only=True))
-    feature_cols = X_df.columns.tolist()
-    X = X_df.to_numpy(dtype=np.float32)
-
+    # 2) Load scaler + feature schema from training time
     scaler_path = global_dir / "scaler.joblib"
-    assert scaler_path.exists(), "Missing global scaler: models/_global/scaler.joblib"
+    feat_path   = global_dir / "feature_columns.json"
+    assert scaler_path.exists(), "Missing global scaler: models/_global/scaler.joblib (run trainer first)"
+    assert feat_path.exists(),   "Missing feature schema: models/_global/feature_columns.json (run trainer first)"
+
     scaler: StandardScaler = joblib.load(scaler_path)
+    saved = json.loads(feat_path.read_text(encoding="utf-8"))
+    feature_cols = list(saved.get("feature_columns", []))
+    assert len(feature_cols) == getattr(scaler, "n_features_in_", len(feature_cols)), \
+        f"Scaler expects {getattr(scaler,'n_features_in_', '<?>')} features, schema lists {len(feature_cols)}."
+
+    # 3) Build X strictly in that order; drop extras; fill NaNs/Inf; synthesize missing columns at training mean
+    X_df = pd.DataFrame(index=df.index)
+    for i, col in enumerate(feature_cols):
+        if col in df.columns:
+            s = pd.to_numeric(df[col], errors="coerce").replace([np.inf, -np.inf], np.nan)
+            fill_val = float(getattr(scaler, "mean_", np.zeros(len(feature_cols)))[i])
+            s = s.fillna(fill_val)
+        else:
+            # Column didn’t exist in this CSV — create it at training mean so it scales to ~0
+            fill_val = float(getattr(scaler, "mean_", np.zeros(len(feature_cols)))[i])
+            s = pd.Series(np.full(len(df), fill_val, dtype=np.float32), index=df.index)
+        X_df[col] = s.astype(np.float32)
+
+    # 4) Transform
+    X = X_df[feature_cols].to_numpy(dtype=np.float32)
     Xz = scaler.transform(X).astype(np.float32)
 
-    # z-bounds from data (for projection validity)
+    # Bounds in z-space for PGD projection
     z_min = Xz.min(axis=0)
     z_max = Xz.max(axis=0)
-
     return Xz, y, feature_cols, (z_min, z_max)
+
 
 # URL tokenizer & dataset
 PAD_ID = 256
 CLS_ID = 257
 VOCAB_SIZE = 258
 
-def pick_max_len_from_global(cfg: dict):
-    tok_path = Path(cfg["models_dir"]) / "_global" / "url_tokenizer.json"
-    assert tok_path.exists(), "Missing models/_global/url_tokenizer.json"
+def read_tokenizer_info(global_dir: Path):
+    tok_path = global_dir / "url_tokenizer.json"
+    assert tok_path.exists(), "Missing models/_global/url_tokenizer.json (run DL trainer to create it)"
     info = json.loads(tok_path.read_text(encoding="utf-8"))
     use_cls = bool(info.get("use_cls_token", True))
     max_len = int(info.get("max_len", 256))
@@ -263,42 +293,15 @@ def encode_url(u: str, max_len: int, use_cls=True):
         ids += [PAD_ID] * (max_len - len(ids))
     else:
         ids = ids[:max_len]
-    # clamp to [0..255] for bytes, keep PAD/CLS as is
-    ids = [i if i >= 256 else max(0, min(255, i)) for i in ids]
+    ids = [i if i >= 256 else max(0, min(255, i)) for i in ids]  # clamp bytes; keep PAD/CLS
     return np.array(ids, dtype=np.int64)
 
-class URLDataset(Dataset):
-    def __init__(self, urls, labels, max_len, use_cls=True):
-        self.X = np.stack([encode_url(u, max_len, use_cls) for u in urls])
-        self.y = np.array([map_label(y) for y in labels], dtype=np.int64)
-    def __len__(self): return self.X.shape[0]
-    def __getitem__(self, i): return self.X[i], self.y[i]
-
-def load_url_dataset(cfg: dict, subset_max: int | None):
-    df = pd.read_csv(cfg["url_csv"])
-    assert "url" in df.columns and "label" in df.columns
-    max_len, use_cls = pick_max_len_from_global(cfg)
-    urls = df["url"].astype(str).tolist()
-    y = [map_label(v) for v in df["label"].tolist()]
-    U_tr, U_tmp, y_tr, y_tmp = train_test_split(
-        urls, y, test_size=(1.0-cfg["train_ratio"]),
-        random_state=cfg["random_state"], stratify=y
-    )
-    U_val, U_te, y_val, y_te = train_test_split(
-        U_tmp, y_tmp,
-        test_size=(cfg["test_ratio"]/(cfg["val_ratio"]+cfg["test_ratio"])),
-        random_state=cfg["random_state"], stratify=y_tmp
-    )
-    # Use test set for attack eval; limit size
-    X_ids = URLDataset(U_te, y_te, max_len, use_cls)
-    n = len(X_ids)
-    idx = np.arange(n)
-    if subset_max and n > subset_max:
-        rng = np.random.default_rng(cfg["random_state"])
-        idx = rng.choice(idx, size=subset_max, replace=False)
-    X_sub = X_ids.X[idx]
-    y_sub = X_ids.y[idx]
-    return X_sub, y_sub, max_len, use_cls
+def build_text_ids_from_df(df: pd.DataFrame, idx: np.ndarray, cfg: dict, global_dir: Path):
+    max_len, use_cls = read_tokenizer_info(global_dir)
+    urls = df.loc[idx, cfg["url_col"]].astype(str).tolist()
+    y = df.loc[idx, cfg["label_col"]].apply(map_label).astype(np.int64).to_numpy()
+    X_ids = np.stack([encode_url(u, max_len, use_cls) for u in urls])
+    return X_ids, y, max_len, use_cls
 
 # -------------------------------------------------------------------
 # DL model definitions (must match training)
@@ -488,7 +491,7 @@ def attack_tabular_torch_batched(model, Xz, y, eps, alpha, steps, device, z_min,
             X0 = X.clone().detach()
             X_adv = X.clone().detach()
 
-            for t in range(steps_eff):
+            for _ in range(steps_eff):
                 X_adv.requires_grad_(True)
                 logits = model(X_adv).float()
                 loss = loss_fn(logits, Y)
@@ -539,7 +542,6 @@ def linear_wb_attack(model, Xz, y, eps, alpha, steps):
 # Attacks: URL HotFlip (CharCNN / CharTransformer) batched
 # -------------------------------------------------------------------
 def hotflip_step(ids, y, model, emb_module, freeze_pos0=True, topk=1, device="cuda"):
-    # We need grads, so make sure grad is enabled
     model.train()
     ids = ids.clone().to(device).long()
     y_t = y.to(device).float()
@@ -548,41 +550,30 @@ def hotflip_step(ids, y, model, emb_module, freeze_pos0=True, topk=1, device="cu
     model.zero_grad(set_to_none=True)
 
     if isinstance(model, CharCNN):
-        # Embed with grad + retain grad on non-leaf
-        E = model.emb(ids)
-        E.requires_grad_(True)
-        E.retain_grad()
-
-        x = E.transpose(1, 2)                       # (B,D,L)
+        E = model.emb(ids); E.requires_grad_(True); E.retain_grad()
+        x = E.transpose(1, 2)
         x = model.act(model.bn1(model.conv1(x)))
         x = model.act(model.bn2(model.conv2(x)))
         x = torch.amax(x, dim=2)
         x = model.drop(x)
         logits = model.head(x).squeeze(-1)
-
     elif isinstance(model, CharTransformer):
         B, L = ids.shape
         pos_idx = torch.arange(L, device=device).unsqueeze(0).expand(B, L)
-
-        E = model.emb(ids)
-        E.requires_grad_(True)
-        E.retain_grad()
-
+        E = model.emb(ids); E.requires_grad_(True); E.retain_grad()
         z = E + model.pos(pos_idx)
         z = model.enc(z)
         z = model.norm(z)
         pooled = z[:, 0, :] if (ids[:, 0] == CLS_ID).all() else z.mean(dim=1)
         logits = model.head(pooled).squeeze(-1)
-
     else:
         raise RuntimeError("Unsupported URL model")
 
     loss = loss_fn(logits, y_t)
-    loss.backward()                                  # populates E.grad (because we retained it)
-    G = E.grad.detach()                              # (B,L,D)
+    loss.backward()
+    G = E.grad.detach()
 
-    # HotFlip selection
-    W = emb_module.weight.detach()                   # (V,D)
+    W = emb_module.weight.detach()
     B, L, D = G.shape
     ids_new = ids.clone()
 
@@ -591,15 +582,12 @@ def hotflip_step(ids, y, model, emb_module, freeze_pos0=True, topk=1, device="cu
         pos_mask[:, 0] = False
     pos_mask &= (ids != PAD_ID)
 
-    curW = W[ids]                                     # (B,L,D)
-    # score(v) = <W_v - W_cur, grad>
+    curW = W[ids]
     scores = torch.einsum("vd,bld->blv", W, G) - torch.einsum("bld,bld->bl", curW, G)[..., None]
-
-    # forbid staying the same / PAD token
     scores.scatter_(2, ids.unsqueeze(-1), float("-inf"))
     scores[:, :, PAD_ID] = float("-inf")
 
-    gains, cand = scores.max(dim=2)                   # (B,L)
+    gains, cand = scores.max(dim=2)
     gains = gains.masked_fill(~pos_mask, float("-inf"))
     k = min(topk, L)
     top_gain, top_pos = torch.topk(gains, k=k, dim=1)
@@ -614,11 +602,9 @@ def hotflip_step(ids, y, model, emb_module, freeze_pos0=True, topk=1, device="cu
     return ids_new.detach()
 
 def attack_url_hotflip_batched(model, ids_np, y_np, steps, topk, device, freeze_pos0=True, batch_size=1024):
-    """Multi-step HotFlip (FGSM when steps=1) with OOM-safe batching."""
     N = ids_np.shape[0]
     bs = max(1, int(batch_size))
     out = np.empty_like(ids_np)
-
     i = 0
     while i < N:
         j = min(N, i + bs)
@@ -627,10 +613,8 @@ def attack_url_hotflip_batched(model, ids_np, y_np, steps, topk, device, freeze_
             y   = torch.from_numpy(y_np[i:j]).long().to(device)
             ids_adv = ids.clone()
             for _ in range(max(1, int(steps))):
-                ids_adv = hotflip_step(
-                    ids_adv, y, model, model.emb,
-                    freeze_pos0=freeze_pos0, topk=topk, device=device
-                )
+                ids_adv = hotflip_step(ids_adv, y, model, model.emb,
+                                       freeze_pos0=freeze_pos0, topk=topk, device=device)
             out[i:j] = ids_adv.detach().cpu().numpy()
             i = j
         except RuntimeError as e:
@@ -640,8 +624,6 @@ def attack_url_hotflip_batched(model, ids_np, y_np, steps, topk, device, freeze_
                 print(f"[WARN] OOM during HotFlip; retrying with batch_size={bs}")
                 continue
             raise
-
-    # set eval mode back (just in case caller assumes it)
     model.eval()
     return out
 
@@ -670,8 +652,7 @@ def distill_surrogate(global_surrogate, teacher, Xz, y, device, tag, epochs=6, l
 
     model = SurrogateMLP(in_dim=Xz.shape[1])
     model.load_state_dict(global_surrogate.state_dict())
-    model.to(device)
-    model.train()
+    model.to(device); model.train()
 
     ds = TensorDataset(torch.from_numpy(Xz).float(), torch.from_numpy(soft).float())
     dl = DataLoader(ds, batch_size=8192, shuffle=True, num_workers=CFG["num_workers"], pin_memory=(device.type=="cuda"))
@@ -711,32 +692,43 @@ def main():
     models_root = Path(CFG["models_dir"])
     results_root = Path(CFG["results_dir"])
     ensure_dir(results_root)
+    global_dir = models_root / "_global"
 
-    # ---------------- Tabular data ----------------
-    Xz_all, y_all, feat_cols, (z_min, z_max) = load_tabular_scaled(CFG)
+    # ---------- Load single dataset ----------
+    df = pd.read_csv(CFG["dataset_csv"])
+    assert CFG["label_col"] in df.columns and CFG["url_col"] in df.columns, "Dataset must have url + label"
+    df[CFG["label_col"]] = df[CFG["label_col"]].apply(map_label).astype(np.int64)
 
-    X_tr, X_tmp, y_tr, y_tmp = train_test_split(
-        Xz_all, y_all, test_size=(1.0-CFG["train_ratio"]),
-        random_state=CFG["random_state"], stratify=y_all
-    )
-    X_val, X_te, y_val, y_te = train_test_split(
-        X_tmp, y_tmp, test_size=(CFG["test_ratio"]/(CFG["val_ratio"]+CFG["test_ratio"])),
-        random_state=CFG["random_state"], stratify=y_tmp
-    )
+    # ---------- Tabular features (scaled) ----------
+    Xz_all, y_all, feat_cols, (z_min, z_max) = load_tabular_scaled_from_df(df, CFG, global_dir)
+
+    # ---------- Shared split indices ----------
+    idx_tr, idx_val, idx_te = load_split_indices(global_dir, y_all, CFG)
+    X_tr, y_tr = Xz_all[idx_tr], y_all[idx_tr]
+    X_te, y_te = Xz_all[idx_te], y_all[idx_te]
+
+    # Limit tabular test samples if requested
     if CFG["max_attack_samples_tab"] and X_te.shape[0] > CFG["max_attack_samples_tab"]:
         rng = np.random.default_rng(CFG["random_state"])
-        idx = rng.choice(np.arange(X_te.shape[0]), size=CFG["max_attack_samples_tab"], replace=False)
-        X_te_sub, y_te_sub = X_te[idx], y_te[idx]
+        pick = rng.choice(np.arange(X_te.shape[0]), size=CFG["max_attack_samples_tab"], replace=False)
+        X_te_sub, y_te_sub = X_te[pick], y_te[pick]
     else:
         X_te_sub, y_te_sub = X_te, y_te
 
-    # ---------------- URL text data ----------------
-    if Path(CFG["url_csv"]).exists():
-        Xids_te, y_text_te, max_len, use_cls = load_url_dataset(CFG, subset_max=CFG["max_attack_samples_text"])
-    else:
-        Xids_te, y_text_te, max_len, use_cls = None, None, None, None
+    # ---------- URL text ids from SAME dataset & SAME test indices ----------
+    # (requires tokenizer from trainer)
+    try:
+        Xids_te, y_text_te, max_len, use_cls = build_text_ids_from_df(df, idx_te, CFG, global_dir)
+        if CFG["max_attack_samples_text"] and Xids_te.shape[0] > CFG["max_attack_samples_text"]:
+            rng = np.random.default_rng(CFG["random_state"])
+            pick = rng.choice(np.arange(Xids_te.shape[0]), size=CFG["max_attack_samples_text"], replace=False)
+            Xids_te, y_text_te = Xids_te[pick], y_text_te[pick]
+    except AssertionError as e:
+        # If tokenizer missing, URL models will be skipped automatically
+        print(f"[WARN] {e}")
+        Xids_te = y_text_te = max_len = use_cls = None
 
-    # ---------------- Surrogate global (for black-box teachers) ----------------
+    # ---------- Global surrogate (for transfer attacks) ----------
     print("[INFO] Preparing global surrogate for tabular transfer attacks...")
     global_surr = SurrogateMLP(in_dim=X_tr.shape[1]).to(device)
     opt = torch.optim.AdamW(global_surr.parameters(), lr=3e-4, weight_decay=1e-5)
@@ -761,7 +753,7 @@ def main():
     global_surr.eval()
     cleanup_cuda()
 
-    # ---------------- Model registry ----------------
+    # ---------- Model registry ----------
     model_list = [
         "DL-MLP",
         "DL-FTTransformer",
@@ -786,12 +778,12 @@ def main():
         print(f"\n==== Attacking: {name} ====")
         out_base = ensure_dir(results_root / name)
 
-        # ---------- load model ----------
         is_tab_dl = name in {"DL-MLP","DL-FTTransformer"}
         is_url_dl = name in {"DL-CharCNN","DL-CharTransformer"}
         is_linear = name in {"Logistic_Regression","Calibrated_LinearSVC"}
         is_blackbox = name in {"Decision_Tree","Random_Forest","LightGBM","XGBoost","AdaBoost","Gaussian_Naive_Bayes"}
 
+        # ---------- load model ----------
         if is_tab_dl:
             if name == "DL-MLP":
                 mdl = MLPNet(in_dim=X_tr.shape[1]).to(device)
@@ -801,7 +793,9 @@ def main():
             mdl.load_state_dict(state); mdl.eval()
 
         elif is_url_dl:
-            assert Xids_te is not None, "URL dataset not available for URL models"
+            if Xids_te is None:
+                print(f"[WARN] Skipping {name}: tokenizer or URL ids not available.")
+                continue
             if name == "DL-CharCNN":
                 mdl = CharCNN(vocab_size=VOCAB_SIZE, d_model=64, p_drop=0.2).to(device)
             else:
@@ -812,15 +806,18 @@ def main():
         else:
             mdl = joblib.load(mdir / "model.joblib")
 
-        # ---------- baseline on test ----------
+        # ---------- NAT baseline ----------
+        nat_dir = ensure_dir(out_base / "adv_NAT")
         if is_tab_dl:
             y_pred, y_score = eval_torch_batched(mdl, X_te_sub, y_te_sub, device, CFG["tab_eval_bs"])
+            y_nat_true = y_te_sub
         elif is_url_dl:
             y_pred, y_score = eval_url_torch_batched(mdl, Xids_te, y_text_te, device, CFG["text_eval_bs"])
+            y_nat_true = y_text_te
         else:
             y_pred, y_score = eval_sklearn(mdl, X_te_sub, y_te_sub)
-        nat_dir = ensure_dir(out_base / "adv_NAT")
-        metrics_to_files(name, (y_text_te if is_url_dl else y_te_sub), y_pred, y_score, nat_dir, "NAT")
+            y_nat_true = y_te_sub
+        metrics_to_files(name, y_nat_true, y_pred, y_score, nat_dir, "NAT")
 
         # ---------- FGSM ----------
         fgsm_dir = ensure_dir(out_base / "adv_FGSM")
@@ -900,7 +897,7 @@ def main():
         save_json({"attack":"PGD","cfg":ATTACKCFG}, pgd_dir / "attack_config.json")
         cleanup_cuda()
 
-    print("\n[DONE] Adversarial evaluation complete.")
+    print("\n[DONE] Adversarial evaluation complete (single dataset & shared split).")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+{
+  "model": "AdaBoost",
+  "attack": "PGD",
+  "samples_evaluated": 50000,
+  "accuracy": 0.5291,
+  "precision": 0.514892,
+  "recall": 0.951236,
+  "f1_score": 0.668133,
+  "auc_roc": 0.705066,
+  "timestamp": "2025-08-11T15:11:09.372761+00:00"
+}

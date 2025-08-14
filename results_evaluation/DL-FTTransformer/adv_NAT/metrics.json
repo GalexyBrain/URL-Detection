@@ -1,0 +1,11 @@
+{
+  "model": "DL-FTTransformer",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.9337,
+  "precision": 0.931623,
+  "recall": 0.935624,
+  "f1_score": 0.933619,
+  "auc_roc": 0.974107,
+  "timestamp": "2025-08-12T17:06:23.410870+00:00"
+}

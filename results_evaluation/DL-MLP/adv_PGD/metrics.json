@@ -1,0 +1,11 @@
+{
+  "model": "DL-MLP",
+  "attack": "PGD",
+  "samples_evaluated": 50000,
+  "accuracy": 0.2991,
+  "precision": 0.363288,
+  "recall": 0.540135,
+  "f1_score": 0.434402,
+  "auc_roc": 0.170244,
+  "timestamp": "2025-08-12T17:06:22.085692+00:00"
+}

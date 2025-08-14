@@ -1,0 +1,11 @@
+{
+  "model": "Logistic_Regression",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.90964,
+  "precision": 0.927631,
+  "recall": 0.887943,
+  "f1_score": 0.907353,
+  "auc_roc": 0.957631,
+  "timestamp": "2025-08-12T17:09:01.265133+00:00"
+}

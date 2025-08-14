@@ -77,7 +77,7 @@ def extract_features(df_chunk):
     # --- Binary Features ---
     df_chunk['ip_as_hostname'] = parsed_urls.apply(lambda x: is_ip_hostname(x.netloc))
     df_chunk['exe_in_url'] = df_chunk['url'].apply(lambda x: 1 if '.exe' in x.lower() else 0)
-    df_chunk['https_in_url'] = df_chunk['url'].apply(lambda x: 1 if 'https' in x else 0)
+    df_chunk['https_in_url'] = df_chunk['url'].apply(lambda x: 1 if 'https' in x else 0)  # scheme substring
     df_chunk['ftp_used'] = df_chunk['url'].apply(lambda x: 1 if 'ftp://' in x.lower() else 0)
     df_chunk['js_used'] = df_chunk['url'].apply(lambda x: 1 if '.js' in x.lower() else 0)
     df_chunk['css_used'] = df_chunk['url'].apply(lambda x: 1 if '.css' in x.lower() else 0)
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     except FileNotFoundError:
         print("Error: merged_url_dataset.csv not found.")
         print("Please make sure the dataset file is in the same directory.")
-        exit()
+        raise SystemExit(1)
 
     df.drop_duplicates(subset='url', inplace=True)
     df.dropna(inplace=True)
@@ -116,15 +116,16 @@ if __name__ == '__main__':
         processed_chunks = pool.map(extract_features, df_chunks)
 
     # Concatenate the processed chunks back into a single DataFrame
-    features_df = pd.concat(processed_chunks)
+    features_df = pd.concat(processed_chunks, ignore_index=True)
     print("Feature extraction complete.")
     
     # --- Label Encoding ---
     features_df['label'] = features_df['label'].apply(lambda x: 0 if x == 'benign' else 1)
-    print("\nEncoded 'type' column into binary 'label' (0: benign, 1: malicious).")
-    print(f"Class distribution:\n{features_df['label'].value_counts(normalize=True) * 100}")
+    print("\nEncoded 'label' column into binary (0: benign, 1: malicious).")
+    print(f"Class distribution (%):\n{(features_df['label'].value_counts(normalize=True) * 100).round(2)}")
 
     # --- Finalizing the DataFrame ---
+    # Keep URL as the FIRST column, then features, then label LAST.
     feature_columns = [
         'url_length', 'digit_count', 'special_char_count', 'hostname_length',
         'path_length', 'entropy', 'num_tokens', 'query_length', 'dot_count',
@@ -133,11 +134,12 @@ if __name__ == '__main__':
         'at_char_count', 'tilde_char_count', 'double_slash_count',
         'digit_alphabet_ratio', 'special_char_alphabet_ratio',
         'uppercase_lowercase_ratio', 'domain_url_ratio', 'ip_as_hostname',
-        'exe_in_url', 'https_in_url', 'ftp_used', 'js_used', 'css_used', 'label'
+        'exe_in_url', 'https_in_url', 'ftp_used', 'js_used', 'css_used'
     ]
+    final_columns = ['url'] + feature_columns + ['label']
     
-    # Ensure all columns exist before selection
-    final_df = features_df[feature_columns]
+    # Ensure all columns exist before selection (this will raise if any missing — intentional)
+    final_df = features_df[final_columns]
 
     output_filename = 'features_extracted.csv'
     final_df.to_csv(output_filename, index=False)
@@ -149,12 +151,10 @@ if __name__ == '__main__':
     print(final_df.head())
 
     # --- Generating Beautiful, Comparable Plots ---
-    # --- Generating Polished, Continuous-Looking Plots ---
     print("\n--- Generating Plots ---")
 
-    import numpy as np
     from scipy.stats import gaussian_kde
-    import matplotlib.pyplot as plt
+    import math
 
     # Always-White backgrounds (no surprises on export)
     plt.rcParams.update({
@@ -169,9 +169,13 @@ if __name__ == '__main__':
         "axes.facecolor": "white",
     })
 
-    # Data
-    benign = final_df[final_df['label'] == 0]['url_length'].dropna().to_numpy()
-    mal = final_df[final_df['label'] == 1]['url_length'].dropna().to_numpy()
+    # Data splits for plotting
+    benign_mask = final_df['label'] == 0
+    mal_mask = final_df['label'] == 1
+
+    # ----------------- Existing URL length comparisons -----------------
+    benign_len = final_df.loc[benign_mask, 'url_length'].dropna().to_numpy()
+    mal_len = final_df.loc[mal_mask, 'url_length'].dropna().to_numpy()
 
     def freedman_diaconis_bins(x):
         x = np.asarray(x); x = x[~np.isnan(x)]
@@ -186,19 +190,19 @@ if __name__ == '__main__':
         return max(40, min(100, bins))  # keep things visually smooth
 
     def annotate_box(ax, data, label):
-        med = np.median(data)
-        p10, p90 = np.percentile(data, [10, 90])
+        med = np.median(data) if len(data) else float('nan')
+        p10, p90 = np.percentile(data, [10, 90]) if len(data) else (float('nan'), float('nan'))
         ax.axvline(med, linestyle="--", linewidth=1, alpha=0.9, label=f"Median = {med:.0f}")
-        # Anchor in axes coords (no "floating")
         txt = f"{label}\nN={len(data):,}\nP10={p10:.0f}, P90={p90:.0f}"
         ax.text(0.02, 0.98, txt, transform=ax.transAxes, va="top", ha="left",
                 fontsize=9, bbox=dict(boxstyle="round", facecolor="white", alpha=0.85))
 
     def nice_hist(ax, data, title, bins=None):
+        if len(data) == 0:
+            ax.set_title(title + " (no data)")
+            return
         if bins is None: bins = freedman_diaconis_bins(data)
-        # Continuous look: no edges, slightly higher alpha
         ax.hist(data, bins=bins, density=True, alpha=0.95, edgecolor="none")
-        # Smooth overlay for readability (KDE)
         xs = np.linspace(*np.percentile(data, [1, 99]), 400)
         try:
             kde = gaussian_kde(data)
@@ -206,33 +210,35 @@ if __name__ == '__main__':
         except Exception:
             pass
         ax.set_title(title)
-        ax.set_xlabel("URL Length (characters)")
+        ax.set_xlabel("Value")
         ax.set_ylabel("Density")
         ax.grid(True, alpha=0.25, linestyle="--")
 
-    # Shared x-range for fair compare
-    lo = np.percentile(np.concatenate([benign, mal]), 1)
-    hi = np.percentile(np.concatenate([benign, mal]), 99)
+    # Shared x-range for URL length for fair compare
+    if len(benign_len) and len(mal_len):
+        lo = np.percentile(np.concatenate([benign_len, mal_len]), 1)
+        hi = np.percentile(np.concatenate([benign_len, mal_len]), 99)
+    else:
+        lo, hi = 0, 1
 
     # 1) Side-by-side comparison
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
-    nice_hist(axes[0], benign, "Benign URLs — Length")
-    annotate_box(axes[0], benign, "Benign")
-    nice_hist(axes[1], mal, "Malicious URLs — Length")
-    annotate_box(axes[1], mal, "Malicious")
-
+    nice_hist(axes[0], benign_len, "Benign URLs — Length")
+    annotate_box(axes[0], benign_len, "Benign")
+    nice_hist(axes[1], mal_len, "Malicious URLs — Length")
+    annotate_box(axes[1], mal_len, "Malicious")
     for ax in axes:
         ax.set_xlim(lo, hi)
         ax.legend(frameon=False, loc="upper right")
     fig.suptitle("URL Length Distributions by Class", y=1.02, fontsize=14, fontweight="bold")
-    fig.savefig("url_length_distribution_compare.png", bbox_inches="tight")  # no transparency
+    fig.savefig("url_length_distribution_compare.png", bbox_inches="tight")
     print("Saved 'url_length_distribution_compare.png'")
 
     # 2) Per-class polished exports
     plt.figure(figsize=(8, 5))
     ax = plt.gca()
-    nice_hist(ax, benign, "Frequency Distribution of URL Length — Benign")
-    annotate_box(ax, benign, "Benign")
+    nice_hist(ax, benign_len, "Frequency Distribution of URL Length — Benign")
+    annotate_box(ax, benign_len, "Benign")
     ax.set_xlim(lo, hi)
     ax.legend(frameon=False, loc="upper right")
     plt.savefig("url_length_distribution_benign.png", bbox_inches="tight")
@@ -240,8 +246,8 @@ if __name__ == '__main__':
 
     plt.figure(figsize=(8, 5))
     ax = plt.gca()
-    nice_hist(ax, mal, "Frequency Distribution of URL Length — Malicious")
-    annotate_box(ax, mal, "Malicious")
+    nice_hist(ax, mal_len, "Frequency Distribution of URL Length — Malicious")
+    annotate_box(ax, mal_len, "Malicious")
     ax.set_xlim(lo, hi)
     ax.legend(frameon=False, loc="upper right")
     plt.savefig("url_length_distribution_malicious.png", bbox_inches="tight")
@@ -249,7 +255,7 @@ if __name__ == '__main__':
 
     # 3) CDF comparison (white bg, clean legend)
     plt.figure(figsize=(8, 5))
-    for data, lbl in [(benign, "Benign"), (mal, "Malicious")]:
+    for data, lbl in [(benign_len, "Benign"), (mal_len, "Malicious")]:
         vals = np.sort(data); y = np.linspace(0, 1, len(vals), endpoint=True)
         plt.step(vals, y, where="post", linewidth=1.6, label=lbl)
     plt.xlim(lo, hi)
@@ -260,5 +266,85 @@ if __name__ == '__main__':
     plt.legend(frameon=False)
     plt.savefig("url_length_cdf_compare.png", bbox_inches="tight")
     print("Saved 'url_length_cdf_compare.png'")
+
+    # ----------------- NEW: One consolidated figure for ALL features -----------------
+    print("Building consolidated feature grid...")
+
+    # Treat every feature except 'url' and 'label' as plottable
+    all_feats = [c for c in final_df.columns if c not in ('url', 'label')]
+    n_feats = len(all_feats)
+    n_cols = 4
+    n_rows = math.ceil(n_feats / n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4.0, n_rows * 3.0))
+    axes = np.array(axes).reshape(-1)  # flatten for easy indexing
+
+    for i, feat in enumerate(all_feats):
+        ax = axes[i]
+        b = final_df.loc[benign_mask, feat].dropna().to_numpy()
+        m = final_df.loc[mal_mask, feat].dropna().to_numpy()
+
+        # Binary detection (strict 0/1 set)
+        unique_vals = set(np.unique(final_df[feat].dropna().values))
+        is_binary = unique_vals.issubset({0, 1})
+
+        if is_binary:
+            # plot per-class rate for '1'
+            p_benign = float((b == 1).mean()) if len(b) else 0.0
+            p_mal = float((m == 1).mean()) if len(m) else 0.0
+            x = np.arange(2)
+            ax.bar(x - 0.15, [1 - p_benign, p_benign], width=0.3, label="Benign")
+            ax.bar(x + 0.15, [1 - p_mal, p_mal], width=0.3, label="Malicious")
+            ax.set_xticks(x)
+            ax.set_xticklabels(['0', '1'])
+            ax.set_ylabel("Proportion")
+            ax.set_title(feat)
+            ax.grid(True, alpha=0.25, linestyle="--")
+        else:
+            # Overlay histograms (density) with KDE if possible
+            # Robust x-limits by percentiles if data exists
+            both = np.concatenate([b, m]) if len(b) and len(m) else np.array([])
+            if both.size > 0:
+                lo_f, hi_f = np.percentile(both, [1, 99])
+            else:
+                lo_f, hi_f = 0, 1
+
+            if len(b):
+                bins_b = freedman_diaconis_bins(b)
+                ax.hist(b, bins=bins_b, density=True, alpha=0.55, edgecolor="none", label="Benign")
+                try:
+                    xs = np.linspace(lo_f, hi_f, 400)
+                    kde_b = gaussian_kde(b)
+                    ax.plot(xs, kde_b(xs), linewidth=1.2)
+                except Exception:
+                    pass
+
+            if len(m):
+                bins_m = freedman_diaconis_bins(m)
+                ax.hist(m, bins=bins_m, density=True, alpha=0.55, edgecolor="none", label="Malicious")
+                try:
+                    xs = np.linspace(lo_f, hi_f, 400)
+                    kde_m = gaussian_kde(m)
+                    ax.plot(xs, kde_m(xs), linewidth=1.2)
+                except Exception:
+                    pass
+
+            ax.set_xlim(lo_f, hi_f)
+            ax.set_title(feat)
+            ax.set_ylabel("Density")
+            ax.grid(True, alpha=0.25, linestyle="--")
+
+        if i % n_cols == 0:
+            ax.set_xlabel("Value")
+        ax.legend(frameon=False, fontsize=8)
+
+    # Hide any unused axes
+    for j in range(n_feats, len(axes)):
+        axes[j].axis('off')
+
+    fig.suptitle("All Feature Distributions (Benign vs Malicious)", y=0.995, fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig("all_feature_distributions.png", bbox_inches="tight")
+    print("Saved 'all_feature_distributions.png'")
 
     print("\n--- Plotting complete ---")

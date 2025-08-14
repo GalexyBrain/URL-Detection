@@ -1,18 +1,20 @@
+Performance Analysis for: DL-CharTransformer
+===============================
 Samples (evaluated):	400001
-Accuracy:		0.954873
-Precision:		0.953352
-Recall:			0.95655
-F1-Score:		0.954948
-AUC-ROC Score:		0.991275
-==========================================
+Accuracy:		0.95485
+Precision:		0.958685
+Recall:			0.95067
+F1-Score:		0.95466
+AUC-ROC Score:		0.991531
+===============================
 
 Detailed Classification Report
 ------------------------------
               precision    recall  f1-score   support
 
-           0     0.9564    0.9532    0.9548    200001
-           1     0.9534    0.9566    0.9549    200000
+           0     0.9511    0.9590    0.9550    200001
+           1     0.9587    0.9507    0.9547    200000
 
     accuracy                         0.9549    400001
-   macro avg     0.9549    0.9549    0.9549    400001
-weighted avg     0.9549    0.9549    0.9549    400001
+   macro avg     0.9549    0.9549    0.9548    400001
+weighted avg     0.9549    0.9549    0.9548    400001

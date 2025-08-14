@@ -1,0 +1,11 @@
+{
+  "model": "XGBoost",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.52632,
+  "precision": 0.517924,
+  "recall": 0.7144,
+  "f1_score": 0.600499,
+  "auc_roc": 0.685289,
+  "timestamp": "2025-08-11T15:08:12.631861+00:00"
+}

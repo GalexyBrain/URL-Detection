@@ -1,0 +1,11 @@
+{
+  "model": "Decision_Tree",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.78066,
+  "precision": 0.735776,
+  "recall": 0.873535,
+  "f1_score": 0.79876,
+  "auc_roc": 0.758695,
+  "timestamp": "2025-08-12T17:09:47.673617+00:00"
+}

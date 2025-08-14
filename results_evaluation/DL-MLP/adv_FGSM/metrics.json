@@ -1,0 +1,11 @@
+{
+  "model": "DL-MLP",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.49274,
+  "precision": 0.494761,
+  "recall": 0.847086,
+  "f1_score": 0.624669,
+  "auc_roc": 0.598131,
+  "timestamp": "2025-08-12T17:06:21.374561+00:00"
+}

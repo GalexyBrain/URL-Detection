@@ -1,0 +1,11 @@
+{
+  "model": "Decision_Tree",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.93342,
+  "precision": 0.933456,
+  "recall": 0.932895,
+  "f1_score": 0.933175,
+  "auc_roc": 0.972601,
+  "timestamp": "2025-08-12T17:09:04.719725+00:00"
+}

@@ -1,0 +1,11 @@
+{
+  "model": "Gaussian_Naive_Bayes",
+  "attack": "PGD",
+  "samples_evaluated": 50000,
+  "accuracy": 0.28898,
+  "precision": 0.365492,
+  "recall": 0.579908,
+  "f1_score": 0.448386,
+  "auc_roc": 0.289954,
+  "timestamp": "2025-08-11T15:12:39.288744+00:00"
+}

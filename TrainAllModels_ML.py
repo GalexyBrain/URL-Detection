@@ -6,6 +6,7 @@ Multi-model trainer (Python 3.13+).
 - Per-model artifacts: metrics.json, classification_report.txt, confusion_matrix.png, roc_curve.png,
   feature_importance.csv/.png (when supported).
 - Robust to sklearn API changes for CalibratedClassifierCV.
+- Robust to non-numeric columns (e.g., 'url') in features_extracted.csv.
 """
 
 from pathlib import Path
@@ -84,21 +85,25 @@ def build_models(rs: int):
         "AdaBoost": AdaBoostClassifier(
             random_state=rs, n_estimators=400, learning_rate=0.5
         ),
-        "XGBoost": xgb.XGBClassifier(
+        # MLP is kept out by default (tends to need careful tuning on tabular); uncomment if needed.
+        # "MLP": MLPClassifier(hidden_layer_sizes=(256,128), random_state=rs, max_iter=500),
+    }
+
+    if xgb is not None:
+        models["XGBoost"] = xgb.XGBClassifier(
             eval_metric="logloss", random_state=rs, n_jobs=-1,
             n_estimators=4000, learning_rate=0.02,
             max_depth=6, subsample=0.8, colsample_bytree=0.8,
             tree_method="hist",
             early_stopping_rounds=200
-        ),
-        "LightGBM": lgb.LGBMClassifier(
+        )
+
+    if lgb is not None:
+        models["LightGBM"] = lgb.LGBMClassifier(
             random_state=rs, n_jobs=-1, objective="binary",
             n_estimators=3000, learning_rate=0.02,
             num_leaves=64, subsample=0.8, colsample_bytree=0.8
-        ),
-    }
-
-    
+        )
     return models
 
 # -------------- Helpers --------------
@@ -194,7 +199,16 @@ def main():
     df = pd.read_csv(data_csv)
     assert cfg["label_col"] in df.columns, f"Missing label column: {cfg['label_col']}"
 
-    feature_cols = [c for c in df.columns if c != cfg["label_col"]]
+    # Select ONLY numeric columns for features (exclude strings like 'url')
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if cfg["label_col"] not in numeric_cols:
+        raise ValueError(f"Label column '{cfg['label_col']}' must be numeric (0/1).")
+    feature_cols = [c for c in numeric_cols if c != cfg["label_col"]]
+
+    dropped = [c for c in df.columns if c not in feature_cols + [cfg["label_col"]]]
+    if dropped:
+        print(f"[INFO] Excluding non-numeric columns from X: {dropped}")
+
     X = df[feature_cols].to_numpy(dtype=np.float32)
     y = df[cfg["label_col"]].to_numpy(dtype=int)
     assert set(np.unique(y)) <= {0, 1}, "This script expects binary labels {0,1}."
@@ -231,14 +245,14 @@ def main():
         rdir = ensure_dir(results_root / mname)
 
         # Fit (with val for early stopping if supported)
-        if lgb is not None and isinstance(model, lgb.LGBMClassifier):
+        if (lgb is not None) and isinstance(model, lgb.LGBMClassifier):
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
                 eval_metric="auc",
                 callbacks=[lgb.early_stopping(stopping_rounds=100, verbose=False)]
             )
-        elif xgb is not None and isinstance(model, xgb.XGBClassifier):
+        elif (xgb is not None) and isinstance(model, xgb.XGBClassifier):
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
@@ -299,7 +313,7 @@ def main():
         except Exception:
             pass
 
-        # Feature importance (all features)
+        # Feature importance (all numeric features)
         fi = feature_importance(model, np.array(feature_cols))
         if fi is not None:
             fnames, fvals = fi

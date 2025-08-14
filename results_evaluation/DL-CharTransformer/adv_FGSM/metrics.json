@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharTransformer",
+  "attack": "FGSM",
+  "samples_evaluated": 30000,
+  "accuracy": 0.698033,
+  "precision": 0.665986,
+  "recall": 0.787338,
+  "f1_score": 0.721596,
+  "auc_roc": 0.721546,
+  "timestamp": "2025-08-12T17:07:42.952766+00:00"
+}

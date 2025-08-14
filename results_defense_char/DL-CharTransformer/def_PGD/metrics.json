@@ -1,0 +1,10 @@
+{
+  "model": "DL-CharTransformer",
+  "attack": "PGD",
+  "timestamp": "2025-08-13T18:15:31.720697+00:00",
+  "samples": 2000000,
+  "coverage_accept_rate": 0.0241595,
+  "detector_auc": NaN,
+  "classification_accuracy_on_accepted": 0.6824851507688487,
+  "classification_auc_on_accepted": 0.7098904876260571
+}

@@ -1,10 +1,12 @@
+Performance Analysis for: LightGBM
+===============================
 Samples (evaluated):	400001
 Accuracy:		0.934233
 Precision:		0.932268
 Recall:			0.936505
 F1-Score:		0.934382
 AUC-ROC Score:		0.976
-================================
+===============================
 
 Detailed Classification Report
 ------------------------------

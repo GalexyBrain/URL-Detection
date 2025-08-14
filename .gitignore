@@ -11,3 +11,5 @@ __pycache__/
 # Ignore all models 
 *.joblib
 *.pt
+
+models/

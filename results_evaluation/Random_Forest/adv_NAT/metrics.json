@@ -1,0 +1,11 @@
+{
+  "model": "Random_Forest",
+  "attack": "NAT",
+  "samples_evaluated": 50000,
+  "accuracy": 0.92164,
+  "precision": 0.929337,
+  "recall": 0.912105,
+  "f1_score": 0.92064,
+  "auc_roc": 0.966505,
+  "timestamp": "2025-08-12T17:10:39.283615+00:00"
+}

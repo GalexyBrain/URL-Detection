@@ -1,0 +1,11 @@
+{
+  "model": "DL-CharTransformer",
+  "attack": "NAT",
+  "samples_evaluated": 30000,
+  "accuracy": 0.9547,
+  "precision": 0.958271,
+  "recall": 0.950238,
+  "f1_score": 0.954238,
+  "auc_roc": 0.991439,
+  "timestamp": "2025-08-12T17:07:24.923880+00:00"
+}

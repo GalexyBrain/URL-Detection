@@ -1,0 +1,11 @@
+{
+  "model": "Random_Forest",
+  "attack": "FGSM",
+  "samples_evaluated": 50000,
+  "accuracy": 0.61744,
+  "precision": 0.577305,
+  "recall": 0.867394,
+  "f1_score": 0.693226,
+  "auc_roc": 0.769698,
+  "timestamp": "2025-08-12T17:20:53.354276+00:00"
+}

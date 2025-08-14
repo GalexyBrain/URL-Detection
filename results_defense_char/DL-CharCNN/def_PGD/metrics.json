@@ -1,0 +1,10 @@
+{
+  "model": "DL-CharCNN",
+  "attack": "PGD",
+  "timestamp": "2025-08-13T15:23:01.412088+00:00",
+  "samples": 2000000,
+  "coverage_accept_rate": 0.0015485,
+  "detector_auc": NaN,
+  "classification_accuracy_on_accepted": 0.8773006134969326,
+  "classification_auc_on_accepted": 0.9891716136563204
+}

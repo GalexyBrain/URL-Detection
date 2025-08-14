@@ -1,0 +1,11 @@
+{
+  "model": "Random_Forest",
+  "attack": "PGD",
+  "samples_evaluated": 50000,
+  "accuracy": 0.65378,
+  "precision": 0.601571,
+  "recall": 0.903877,
+  "f1_score": 0.722371,
+  "auc_roc": 0.753239,
+  "timestamp": "2025-08-11T15:05:22.790014+00:00"
+}

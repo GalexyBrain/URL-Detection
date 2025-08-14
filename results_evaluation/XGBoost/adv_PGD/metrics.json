@@ -1,0 +1,11 @@
+{
+  "model": "XGBoost",
+  "attack": "PGD",
+  "samples_evaluated": 50000,
+  "accuracy": 0.50226,
+  "precision": 0.50042,
+  "recall": 0.692607,
+  "f1_score": 0.581034,
+  "auc_roc": 0.670128,
+  "timestamp": "2025-08-11T15:09:05.124257+00:00"
+}
