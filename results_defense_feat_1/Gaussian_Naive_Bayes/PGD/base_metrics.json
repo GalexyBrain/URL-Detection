@@ -1,9 +1,0 @@
-{
-  "samples": 400000,
-  "accuracy": 0.5,
-  "precision": 0.5,
-  "recall": 1.0,
-  "f1": 0.6666666666666666,
-  "auroc": 0.5,
-  "avg_precision": 0.5
-}
