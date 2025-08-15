@@ -1,0 +1,16 @@
+{
+  "scenario": "mixed_PGD",
+  "timestamp": "2025-08-15T15:20:58.176128+00:00",
+  "samples_total": 3000000,
+  "nat_count": 1000000,
+  "adv_count": 2000000,
+  "tau": 0.045270271599292755,
+  "detector_auroc_nat_vs_adv": 0.9960414707649998,
+  "tpr_adv_at_tau": 0.998205,
+  "fpr_nat_at_tau": 0.100249,
+  "accept_rate_overall": 0.30111366666666667,
+  "accept_rate_nat": 0.899751,
+  "accept_rate_adv": 0.001795,
+  "base_acc_accepted_nat": 0.9360000711307906,
+  "base_auc_accepted_nat": 0.9791689611181412
+}

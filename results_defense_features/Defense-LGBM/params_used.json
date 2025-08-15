@@ -1,0 +1,28 @@
+{
+  "winner": "LightGBM",
+  "meta": {
+    "name": "LightGBM",
+    "device": "cpu",
+    "best_iteration": 4000,
+    "params": {
+      "objective": "binary",
+      "metric": [
+        "auc",
+        "binary_logloss"
+      ],
+      "learning_rate": 0.03,
+      "num_leaves": 128,
+      "min_data_in_leaf": 50,
+      "feature_fraction": 0.9,
+      "bagging_fraction": 0.9,
+      "bagging_freq": 1,
+      "verbosity": -1,
+      "scale_pos_weight": 1.0051145974228861,
+      "deterministic": true,
+      "seed": 42,
+      "feature_fraction_seed": 43,
+      "bagging_seed": 44,
+      "data_random_seed": 45
+    }
+  }
+}

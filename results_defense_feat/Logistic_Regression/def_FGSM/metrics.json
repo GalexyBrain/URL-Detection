@@ -1,0 +1,10 @@
+{
+  "model": "Logistic_Regression",
+  "attack": "FGSM",
+  "timestamp": "2025-08-15T13:33:35.851899+00:00",
+  "samples": 400000,
+  "coverage_accept_rate": 0.00288,
+  "detector_auc": NaN,
+  "classification_accuracy_on_accepted": 1.0,
+  "classification_auc_on_accepted": NaN
+}

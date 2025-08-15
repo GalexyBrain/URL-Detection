@@ -1,0 +1,12 @@
+{
+  "covered_confusion": {
+    "TP": 2044,
+    "TN": 0,
+    "FP": 0,
+    "FN": 0
+  },
+  "abstain_by_true": {
+    "benign": 200000,
+    "malicious": 197956
+  }
+}

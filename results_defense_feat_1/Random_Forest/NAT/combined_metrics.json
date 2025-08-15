@@ -1,0 +1,16 @@
+{
+  "samples_total": 400000,
+  "coverage": 0.578925,
+  "accept_rate": 0.90146,
+  "reject_rate": 0.421075,
+  "gray_rate": 0.0,
+  "tau_accept": 0.8370288610458374,
+  "tau_reject": 0.9555678367614746,
+  "covered_samples": 231570,
+  "covered_accuracy": 0.9131018698449713,
+  "covered_precision": 0.8969175048496877,
+  "covered_recall": 0.8797817813854242,
+  "covered_f1": 0.8882670087007701,
+  "covered_auroc": 0.9564409865441751,
+  "covered_avg_precision": 0.9437889627485013
+}

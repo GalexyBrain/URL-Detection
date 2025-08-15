@@ -1,0 +1,30 @@
+[
+  {
+    "name": "LightGBM",
+    "samples": 398969,
+    "accuracy": 0.9820462241427279,
+    "precision": 0.9997811246026369,
+    "recall": 0.9642105051540693,
+    "f1": 0.9816736981878376,
+    "auroc": 0.995530493456267,
+    "avg_precision": 0.996765634826495,
+    "meta": {
+      "device": "cpu",
+      "best_iteration": 4000
+    }
+  },
+  {
+    "name": "LogisticRegression",
+    "samples": 398969,
+    "accuracy": 0.6844165837446017,
+    "precision": 0.820114443947878,
+    "recall": 0.47036975609265763,
+    "f1": 0.597848514465674,
+    "auroc": 0.6954081827696776,
+    "avg_precision": 0.7492729232270101,
+    "meta": {
+      "device": "cpu",
+      "best_iteration": null
+    }
+  }
+]

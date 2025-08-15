@@ -1,0 +1,10 @@
+{
+  "model": "Logistic_Regression",
+  "attack": "NAT",
+  "timestamp": "2025-08-15T13:32:45.803722+00:00",
+  "samples": 400000,
+  "coverage_accept_rate": 0.489645,
+  "detector_auc": NaN,
+  "classification_accuracy_on_accepted": 0.9065445373689102,
+  "classification_auc_on_accepted": 0.951813852983838
+}

@@ -1,0 +1,13 @@
+{
+  "scenario": "FGSM",
+  "timestamp": "2025-08-15T08:25:19.739459+00:00",
+  "samples_adv": 400000,
+  "samples_nat": 400000,
+  "auroc_nat_vs_adv": 0.99486805183125,
+  "tpr_detect_at_tau_reject": 0.995565,
+  "fpr_nat_at_tau_reject": 0.2999675,
+  "accept_rate_adv_at_tau_accept": 0.011815,
+  "reject_rate_adv_at_tau_reject": 0.9965525,
+  "tau_accept": 0.8370288610458374,
+  "tau_reject": 0.9555678367614746
+}

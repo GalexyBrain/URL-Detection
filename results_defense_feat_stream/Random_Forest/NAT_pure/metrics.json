@@ -1,0 +1,11 @@
+{
+  "scenario": "NAT_pure",
+  "timestamp": "2025-08-15T15:10:58.217177+00:00",
+  "samples_nat": 2000000,
+  "accept_rate_nat": 0.8998345,
+  "tau": 0.045270271599292755,
+  "base_acc_nat_full": 0.94224,
+  "base_auc_nat_full": 0.9831693271995001,
+  "base_acc_nat_accepted": 0.9360499069551123,
+  "base_auc_nat_accepted": 0.9792779323726234
+}

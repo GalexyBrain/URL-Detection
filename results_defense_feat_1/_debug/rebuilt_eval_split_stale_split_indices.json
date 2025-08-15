@@ -1,0 +1,9 @@
+{
+  "reason": "stale_split_indices",
+  "rebuilt_test_size": 400000,
+  "test_size_ratio": 0.2,
+  "class_count_eval_rebuilt": [
+    200000,
+    200000
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "samples": 400000,
+  "accept_rate": 0.011815,
+  "reject_rate": 0.9965525,
+  "gray_rate": 0.0,
+  "tau_accept": 0.8370288610458374,
+  "tau_reject": 0.9555678367614746,
+  "block_rate_adv": 0.9965525
+}

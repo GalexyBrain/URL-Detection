@@ -1,0 +1,16 @@
+{
+  "scenario": "mixed_FGSM",
+  "timestamp": "2025-08-15T14:38:35.740182+00:00",
+  "samples_total": 3000000,
+  "nat_count": 1000000,
+  "adv_count": 2000000,
+  "tau": 0.045270271599292755,
+  "detector_auroc_nat_vs_adv": 0.99831694296825,
+  "tpr_adv_at_tau": 0.9988785,
+  "fpr_nat_at_tau": 0.101242,
+  "accept_rate_overall": 0.30033366666666667,
+  "accept_rate_nat": 0.898758,
+  "accept_rate_adv": 0.0011215,
+  "base_acc_accepted_nat": 0.898897144726389,
+  "base_auc_accepted_nat": 0.9469838137475493
+}
