@@ -1,0 +1,122 @@
+{
+  "scenario": "mixed_FGSM",
+  "timestamp": "2025-08-17T14:21:37.223797+00:00",
+  "attack_base_model": "Decision_Tree",
+  "threeclass_model": "Decision_Tree",
+  "lenient_tau_3c": 0.3103448152542114,
+  "stream_counts": {
+    "nat": 500000,
+    "adv": 500000,
+    "total": 1000000
+  },
+  "three_class": {
+    "accuracy": 0.756309,
+    "f1_macro": 0.7697048626771058,
+    "auc_ovr": 0.9046453185702089,
+    "per_class": {
+      "0": {
+        "precision": 0.8737705226336675,
+        "recall": 0.92995652556825,
+        "f1": 0.9009884285789085,
+        "support": 249802
+      },
+      "1": {
+        "precision": 0.5270135851729216,
+        "recall": 0.9338683762460132,
+        "f1": 0.6737865673514056,
+        "support": 250198
+      },
+      "2": {
+        "precision": 0.9985143611753053,
+        "recall": 0.580704,
+        "f1": 0.7343395921010035,
+        "support": 500000
+      }
+    },
+    "counts": {
+      "total": 1000000,
+      "nat": 500000,
+      "adv": 500000
+    },
+    "adv_pred2_rate": 0.580704,
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          232305,
+          17354,
+          143
+        ],
+        [
+          16257,
+          233652,
+          289
+        ],
+        [
+          17303,
+          192345,
+          290352
+        ]
+      ],
+      "total": 1000000,
+      "accuracy_from_confusion": 0.756309
+    }
+  },
+  "nat_only_slice": {
+    "accuracy": 0.931914,
+    "f1_macro": 0.9323166294602014,
+    "per_class": {
+      "0": {
+        "precision": 0.9345957950129142,
+        "recall": 0.92995652556825,
+        "f1": 0.9322703887118652,
+        "support": 249802
+      },
+      "1": {
+        "precision": 0.9308622104650884,
+        "recall": 0.9338683762460132,
+        "f1": 0.9323628702085378,
+        "support": 250198
+      }
+    },
+    "counts": {
+      "nat_total": 500000
+    },
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          232305,
+          17354,
+          143
+        ],
+        [
+          16257,
+          233652,
+          289
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "total": 500000,
+      "accuracy_from_confusion": 0.931914
+    }
+  },
+  "attack": {
+    "kind": "FGSM",
+    "steps": 1,
+    "eps_z": 0.4,
+    "alpha_z": 0.1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "model": "XGBoost",
+  "samples_evaluated": 600001,
+  "accuracy": 0.919975,
+  "precision_macro": 0.923887,
+  "recall_macro": 0.919975,
+  "f1_macro": 0.920611,
+  "auc_ovr": 0.971833,
+  "timestamp": "2025-08-17T06:06:41.318387+00:00",
+  "train_time_sec": 828.36
+}

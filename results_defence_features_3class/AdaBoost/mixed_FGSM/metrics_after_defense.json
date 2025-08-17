@@ -1,0 +1,132 @@
+{
+  "scenario": "mixed_FGSM",
+  "timestamp": "2025-08-17T14:27:11.870897+00:00",
+  "attack_base_model": "AdaBoost",
+  "threeclass_model": "AdaBoost",
+  "lenient_tau_3c": 0.3103448152542114,
+  "stream_counts": {
+    "nat": 500000,
+    "adv": 500000,
+    "total": 1000000
+  },
+  "gate": {
+    "accept_rate_nat": 0.994928,
+    "accept_rate_adv": 5.6e-05,
+    "counts": {
+      "nat_accepted": 497464,
+      "nat_blocked": 2536,
+      "adv_accepted": 28,
+      "adv_blocked": 499972
+    }
+  },
+  "three_class": {
+    "accuracy": 0.8282042726315197,
+    "f1_macro": 0.5740624257325615,
+    "auc_ovr": 0.9567510797532998,
+    "per_class": {
+      "0": {
+        "precision": 0.8987736857448255,
+        "recall": 0.9256648292040465,
+        "f1": 0.9120210777082726,
+        "support": 249801
+      },
+      "1": {
+        "precision": 0.9068447931612269,
+        "recall": 0.7298829457771245,
+        "f1": 0.8087973744790233,
+        "support": 247663
+      },
+      "2": {
+        "precision": 0.0006848812464838686,
+        "recall": 1.0,
+        "f1": 0.001368825010388404,
+        "support": 28
+      }
+    },
+    "counts": {
+      "total_accepted": 497492,
+      "nat_accepted": 497464,
+      "adv_accepted": 28
+    },
+    "adv_pred2_rate_accepted": 1.0,
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          231232,
+          18569,
+          0
+        ],
+        [
+          26043,
+          180765,
+          40855
+        ],
+        [
+          0,
+          0,
+          28
+        ]
+      ],
+      "total": 497492,
+      "accuracy_from_confusion": 0.8282042726315197
+    }
+  },
+  "nat_only_slice": {
+    "accuracy": 0.8281946030265507,
+    "f1_macro": 0.860409226093648,
+    "per_class": {
+      "0": {
+        "precision": 0.8987736857448255,
+        "recall": 0.9256648292040465,
+        "f1": 0.9120210777082726,
+        "support": 249801
+      },
+      "1": {
+        "precision": 0.9068447931612269,
+        "recall": 0.7298829457771245,
+        "f1": 0.8087973744790233,
+        "support": 247663
+      }
+    },
+    "counts": {
+      "nat_accepted": 497464
+    },
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          231232,
+          18569,
+          0
+        ],
+        [
+          26043,
+          180765,
+          40855
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "total": 497464,
+      "accuracy_from_confusion": 0.8281946030265507
+    }
+  },
+  "attack": {
+    "kind": "FGSM",
+    "steps": 1,
+    "eps_z": 0.4,
+    "alpha_z": 0.1
+  }
+}

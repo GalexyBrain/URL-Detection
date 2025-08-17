@@ -12,4 +12,6 @@ __pycache__/
 *.joblib
 *.pt
 
-models/
+models*/
+
+metrics*.txt

@@ -1,0 +1,132 @@
+{
+  "scenario": "mixed_PGD",
+  "timestamp": "2025-08-17T14:13:07.750120+00:00",
+  "attack_base_model": "DL-FTTransformer",
+  "threeclass_model": "DL-FTTransformer",
+  "lenient_tau_3c": 0.3103448152542114,
+  "stream_counts": {
+    "nat": 500000,
+    "adv": 500000,
+    "total": 1000000
+  },
+  "gate": {
+    "accept_rate_nat": 0.994928,
+    "accept_rate_adv": 0.0,
+    "counts": {
+      "nat_accepted": 497464,
+      "nat_blocked": 2536,
+      "adv_accepted": 0,
+      "adv_blocked": 500000
+    }
+  },
+  "three_class": {
+    "accuracy": 0.9317558657510895,
+    "f1_macro": 0.6215804070614187,
+    "auc_ovr": null,
+    "per_class": {
+      "0": {
+        "precision": 0.9382316697473814,
+        "recall": 0.9265695493612915,
+        "f1": 0.9323641431871693,
+        "support": 249801
+      },
+      "1": {
+        "precision": 0.9278123400716479,
+        "recall": 0.936986954046426,
+        "f1": 0.932377077997087,
+        "support": 247663
+      },
+      "2": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      }
+    },
+    "counts": {
+      "total_accepted": 497464,
+      "nat_accepted": 497464,
+      "adv_accepted": 0
+    },
+    "adv_pred2_rate_accepted": NaN,
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          231458,
+          18055,
+          288
+        ],
+        [
+          15238,
+          232057,
+          368
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "total": 497464,
+      "accuracy_from_confusion": 0.9317558657510895
+    }
+  },
+  "nat_only_slice": {
+    "accuracy": 0.9317558657510895,
+    "f1_macro": 0.9323706105921281,
+    "per_class": {
+      "0": {
+        "precision": 0.9382316697473814,
+        "recall": 0.9265695493612915,
+        "f1": 0.9323641431871693,
+        "support": 249801
+      },
+      "1": {
+        "precision": 0.9278123400716479,
+        "recall": 0.936986954046426,
+        "f1": 0.932377077997087,
+        "support": 247663
+      }
+    },
+    "counts": {
+      "nat_accepted": 497464
+    },
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          231458,
+          18055,
+          288
+        ],
+        [
+          15238,
+          232057,
+          368
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "total": 497464,
+      "accuracy_from_confusion": 0.9317558657510895
+    }
+  },
+  "attack": {
+    "kind": "PGD",
+    "steps": 5,
+    "eps_z": 0.4,
+    "alpha_z": 0.1
+  }
+}

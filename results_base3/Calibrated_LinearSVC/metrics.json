@@ -1,0 +1,11 @@
+{
+  "model": "Calibrated_LinearSVC",
+  "samples_evaluated": 600001,
+  "accuracy": 0.763265,
+  "precision_macro": 0.788953,
+  "recall_macro": 0.763266,
+  "f1_macro": 0.755782,
+  "auc_ovr": 0.87415,
+  "timestamp": "2025-08-17T05:48:02.888712+00:00",
+  "train_time_sec": 601.01
+}

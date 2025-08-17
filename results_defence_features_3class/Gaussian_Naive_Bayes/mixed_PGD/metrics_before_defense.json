@@ -1,0 +1,122 @@
+{
+  "scenario": "mixed_PGD",
+  "timestamp": "2025-08-17T14:20:22.471174+00:00",
+  "attack_base_model": "Gaussian_Naive_Bayes",
+  "threeclass_model": "Gaussian_Naive_Bayes",
+  "lenient_tau_3c": 0.3103448152542114,
+  "stream_counts": {
+    "nat": 500000,
+    "adv": 500000,
+    "total": 1000000
+  },
+  "three_class": {
+    "accuracy": 0.364863,
+    "f1_macro": 0.32853864688487583,
+    "auc_ovr": 0.7448859968005691,
+    "per_class": {
+      "0": {
+        "precision": 0.5246610302998477,
+        "recall": 0.999903923907735,
+        "f1": 0.688210261518136,
+        "support": 249802
+      },
+      "1": {
+        "precision": 0.21962100344177896,
+        "recall": 0.45983581003844953,
+        "f1": 0.29726569817390236,
+        "support": 250198
+      },
+      "2": {
+        "precision": 0.5147058823529411,
+        "recall": 7e-05,
+        "f1": 0.0001399809625890879,
+        "support": 500000
+      }
+    },
+    "counts": {
+      "total": 1000000,
+      "nat": 500000,
+      "adv": 500000
+    },
+    "adv_pred2_rate": 7e-05,
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          249778,
+          10,
+          14
+        ],
+        [
+          135129,
+          115050,
+          19
+        ],
+        [
+          91168,
+          408797,
+          35
+        ]
+      ],
+      "total": 1000000,
+      "accuracy_from_confusion": 0.364863
+    }
+  },
+  "nat_only_slice": {
+    "accuracy": 0.729656,
+    "f1_macro": 0.7085143579467494,
+    "per_class": {
+      "0": {
+        "precision": 0.6489307806820869,
+        "recall": 0.999903923907735,
+        "f1": 0.7870630477904047,
+        "support": 249802
+      },
+      "1": {
+        "precision": 0.9999130888232227,
+        "recall": 0.45983581003844953,
+        "f1": 0.6299656681030943,
+        "support": 250198
+      }
+    },
+    "counts": {
+      "nat_total": 500000
+    },
+    "confusion": {
+      "labels": [
+        0,
+        1,
+        2
+      ],
+      "matrix": [
+        [
+          249778,
+          10,
+          14
+        ],
+        [
+          135129,
+          115050,
+          19
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "total": 500000,
+      "accuracy_from_confusion": 0.729656
+    }
+  },
+  "attack": {
+    "kind": "PGD",
+    "steps": 5,
+    "eps_z": 0.4,
+    "alpha_z": 0.1
+  }
+}

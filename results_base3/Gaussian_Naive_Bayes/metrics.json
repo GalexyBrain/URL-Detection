@@ -1,0 +1,11 @@
+{
+  "model": "Gaussian_Naive_Bayes",
+  "samples_evaluated": 600001,
+  "accuracy": 0.502584,
+  "precision_macro": 0.650345,
+  "recall_macro": 0.502585,
+  "f1_macro": 0.413328,
+  "auc_ovr": 0.783663,
+  "timestamp": "2025-08-17T05:48:05.736282+00:00",
+  "train_time_sec": 1.64
+}

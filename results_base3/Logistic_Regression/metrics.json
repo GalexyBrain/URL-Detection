@@ -1,0 +1,11 @@
+{
+  "model": "Logistic_Regression",
+  "samples_evaluated": 600001,
+  "accuracy": 0.76185,
+  "precision_macro": 0.778635,
+  "recall_macro": 0.761851,
+  "f1_macro": 0.755061,
+  "auc_ovr": 0.874414,
+  "timestamp": "2025-08-17T05:38:00.596884+00:00",
+  "train_time_sec": 91.36
+}

@@ -1,0 +1,11 @@
+{
+  "model": "Decision_Tree",
+  "samples_evaluated": 600001,
+  "accuracy": 0.886522,
+  "precision_macro": 0.897165,
+  "recall_macro": 0.886522,
+  "f1_macro": 0.886674,
+  "auc_ovr": 0.949346,
+  "timestamp": "2025-08-17T05:48:30.562708+00:00",
+  "train_time_sec": 24.04
+}

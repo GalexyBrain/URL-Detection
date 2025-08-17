@@ -1,0 +1,11 @@
+{
+  "model": "AdaBoost",
+  "samples_evaluated": 600001,
+  "accuracy": 0.800562,
+  "precision_macro": 0.799818,
+  "recall_macro": 0.800562,
+  "f1_macro": 0.798273,
+  "auc_ovr": 0.903775,
+  "timestamp": "2025-08-17T05:52:51.864659+00:00",
+  "train_time_sec": 107.54
+}

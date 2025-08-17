@@ -1,0 +1,11 @@
+{
+  "model": "DL-MLP",
+  "samples_evaluated": 600001,
+  "accuracy": 0.911442,
+  "precision_macro": 0.91736,
+  "recall_macro": 0.911442,
+  "f1_macro": 0.912111,
+  "auc_ovr": 0.96699,
+  "timestamp": "2025-08-17T06:42:26.950185+00:00",
+  "train_time_sec": 179.33
+}
