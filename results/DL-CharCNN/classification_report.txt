@@ -1,20 +1,18 @@
-Performance Analysis for: DL-CharCNN
-===============================
 Samples (evaluated):	400001
-Accuracy:		0.972213
-Precision:		0.983554
-Recall:			0.960485
-F1-Score:		0.971883
-AUC-ROC Score:		0.994811
-===============================
+Accuracy:		0.972583
+Precision:		0.984578
+Recall:			0.960205
+F1-Score:		0.972239
+AUC-ROC Score:		0.994979
+==================================
 
 Detailed Classification Report
 ------------------------------
               precision    recall  f1-score   support
 
-           0     0.9614    0.9839    0.9725    200001
-           1     0.9836    0.9605    0.9719    200000
+           0     0.9612    0.9850    0.9729    200001
+           1     0.9846    0.9602    0.9722    200000
 
-    accuracy                         0.9722    400001
-   macro avg     0.9725    0.9722    0.9722    400001
-weighted avg     0.9725    0.9722    0.9722    400001
+    accuracy                         0.9726    400001
+   macro avg     0.9729    0.9726    0.9726    400001
+weighted avg     0.9729    0.9726    0.9726    400001

@@ -1,10 +1,10 @@
 {
   "model": "DL-MLP",
   "samples_evaluated": 400001,
-  "accuracy": 0.933543,
-  "precision": 0.931216,
-  "recall": 0.93624,
-  "f1_score": 0.933721,
-  "auc_roc": 0.97487,
-  "timestamp": "2025-08-11T12:38:57.617758+00:00"
+  "accuracy": 0.933405,
+  "precision": 0.931116,
+  "recall": 0.93606,
+  "f1_score": 0.933581,
+  "auc_roc": 0.974952,
+  "timestamp": "2025-08-22T11:43:40.889222+00:00"
 }

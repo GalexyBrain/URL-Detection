@@ -1,20 +1,18 @@
-Performance Analysis for: DL-FTTransformer
-===============================
 Samples (evaluated):	400001
-Accuracy:		0.933273
-Precision:		0.929695
-Recall:			0.937435
-F1-Score:		0.933549
-AUC-ROC Score:		0.974172
-===============================
+Accuracy:		0.933383
+Precision:		0.93027
+Recall:			0.937
+F1-Score:		0.933623
+AUC-ROC Score:		0.974146
+========================================
 
 Detailed Classification Report
 ------------------------------
               precision    recall  f1-score   support
 
-           0     0.9369    0.9291    0.9330    200001
-           1     0.9297    0.9374    0.9335    200000
+           0     0.9365    0.9298    0.9331    200001
+           1     0.9303    0.9370    0.9336    200000
 
-    accuracy                         0.9333    400001
-   macro avg     0.9333    0.9333    0.9333    400001
-weighted avg     0.9333    0.9333    0.9333    400001
+    accuracy                         0.9334    400001
+   macro avg     0.9334    0.9334    0.9334    400001
+weighted avg     0.9334    0.9334    0.9334    400001

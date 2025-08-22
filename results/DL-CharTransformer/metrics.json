@@ -1,10 +1,10 @@
 {
   "model": "DL-CharTransformer",
   "samples_evaluated": 400001,
-  "accuracy": 0.95485,
-  "precision": 0.958685,
-  "recall": 0.95067,
-  "f1_score": 0.95466,
-  "auc_roc": 0.991531,
-  "timestamp": "2025-08-11T13:20:47.192904+00:00"
+  "accuracy": 0.957685,
+  "precision": 0.955145,
+  "recall": 0.960475,
+  "f1_score": 0.957803,
+  "auc_roc": 0.992691,
+  "timestamp": "2025-08-22T12:36:28.798272+00:00"
 }
