@@ -1,3 +1,3 @@
-Brier: 0.053839
-ECE(bins=15): 0.003227
-LogLoss (cross-entropy): 0.182215
+Brier: 0.053617
+ECE(bins=15): 0.003410
+LogLoss (cross-entropy): 0.181572

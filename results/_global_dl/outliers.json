@@ -1,0 +1,6 @@
+{
+  "contamination_cfg": 0.02,
+  "train_flagged_fraction": 0.02000001428572449,
+  "val_flagged_fraction": 0.020395,
+  "test_flagged_fraction": 0.019699950750123124
+}

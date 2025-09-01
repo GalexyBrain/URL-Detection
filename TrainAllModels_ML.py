@@ -25,7 +25,8 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, average_precision_score, balanced_accuracy_score,
     matthews_corrcoef, cohen_kappa_score, confusion_matrix,
-    log_loss, PrecisionRecallDisplay, RocCurveDisplay
+    log_loss, PrecisionRecallDisplay, RocCurveDisplay,
+    roc_curve, precision_recall_curve  # <-- additive import
 )
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.calibration import CalibrationDisplay
@@ -61,7 +62,9 @@ CONFIG = {
     "test_ratio":  0.20,
     "drift_bins": 10,
     "ece_bins": 15,
-    "isoforest_contamination": 0.02
+    "isoforest_contamination": 0.02,
+    # Additive knobs for combined FI plots
+    "fi_top_n": 25  # used for grouped-bar Top-N comparison
 }
 
 def ensure_dir(p: Path) -> Path:
@@ -252,6 +255,196 @@ def build_models(rs: int):
         )
     return models
 
+# ====================== ADDITIVE HELPERS (COMBINED PLOTS & FI) ======================
+
+def finalize_multi_model_plots(results_root: Path, combined_curves, combined_rows, y_val, cfg):
+    comb_dir = ensure_dir(results_root / "_combined")
+
+    # ---- Combined metrics table (TEST) ----
+    df_metrics = pd.DataFrame(combined_rows)  # one row per model with key test metrics
+    df_metrics.to_csv(comb_dir / "combined_metrics_test.csv", index=False)
+    save_json(df_metrics.to_dict(orient="records"), comb_dir / "combined_metrics_test.json")
+
+    # ---- Combined ROC (TEST) ----
+    fig, ax = plt.subplots(figsize=(7.5, 6))
+    for item in combined_curves:
+        name = item["name"]
+        y_true = item["y_test"]
+        y_score = item["score_test"]
+        if y_score is None:
+            continue
+        fpr, tpr, _ = roc_curve(y_true, y_score)
+        try:
+            auc = roc_auc_score(y_true, y_score)
+            label = f"{name} (AUC={auc:.3f})"
+        except Exception:
+            label = f"{name}"
+        ax.plot(fpr, tpr, label=label)
+    ax.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
+    ax.set_xlabel("False Positive Rate"); ax.set_ylabel("True Positive Rate")
+    ax.set_title("Combined ROC (Test)")
+    ax.legend()
+    fig.tight_layout(); fig.savefig(comb_dir / "combined_roc_test.png", dpi=220); plt.close(fig)
+
+    # ---- Combined Precision–Recall (TEST) ----
+    fig, ax = plt.subplots(figsize=(7.5, 6))
+    for item in combined_curves:
+        name = item["name"]
+        y_true = item["y_test"]
+        y_score = item["score_test"]
+        if y_score is None:
+            continue
+        p, r, _ = precision_recall_curve(y_true, y_score)
+        try:
+            ap = average_precision_score(y_true, y_score)
+            label = f"{name} (AP={ap:.3f})"
+        except Exception:
+            label = f"{name}"
+        ax.plot(r, p, label=label)
+    ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
+    ax.set_title("Combined Precision–Recall (Test)")
+    ax.legend()
+    fig.tight_layout(); fig.savefig(comb_dir / "combined_pr_test.png", dpi=220); plt.close(fig)
+
+    # ---- Combined Calibration / Reliability (TEST) ----
+    have_any_proba = any(item.get("proba_test") is not None for item in combined_curves)
+    if have_any_proba:
+        fig, ax = plt.subplots(figsize=(7.5, 6))
+        # Reference perfectly calibrated line
+        ax.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
+        for item in combined_curves:
+            name = item["name"]; proba = item.get("proba_test", None)
+            if proba is None:
+                continue
+            disp = CalibrationDisplay.from_predictions(
+                item["y_test"], proba, n_bins=cfg["ece_bins"], ax=ax)
+            # Attach label to the generated line for a proper legend
+            if hasattr(disp, "line_"):
+                disp.line_.set_label(name)
+        ax.set_title("Combined Calibration (Test)")
+        ax.set_xlabel("Mean Predicted Probability"); ax.set_ylabel("Fraction of Positives")
+        ax.legend()
+        fig.tight_layout(); fig.savefig(comb_dir / "combined_calibration_test.png", dpi=220); plt.close(fig)
+
+    # ---- Combined Threshold Sweeps (on VALIDATION; probability models only) ----
+    have_any_val_proba = any(item.get("proba_val") is not None for item in combined_curves)
+    if have_any_val_proba:
+        # F1
+        fig, ax = plt.subplots(figsize=(7.5, 6))
+        for item in combined_curves:
+            name = item["name"]; p_val = item.get("proba_val", None)
+            if p_val is None:
+                continue
+            sweep_df, _, _ = sweep_thresholds(y_val, p_val)
+            ax.plot(sweep_df["threshold"], sweep_df["f1"], label=name)
+        ax.set_xlabel("Threshold"); ax.set_ylabel("F1")
+        ax.set_title("Combined Threshold Sweep (Val) — F1")
+        ax.legend()
+        fig.tight_layout(); fig.savefig(comb_dir / "combined_threshold_f1_val.png", dpi=220); plt.close(fig)
+
+        # Youden J
+        fig, ax = plt.subplots(figsize=(7.5, 6))
+        for item in combined_curves:
+            name = item["name"]; p_val = item.get("proba_val", None)
+            if p_val is None:
+                continue
+            sweep_df, _, _ = sweep_thresholds(y_val, p_val)
+            ax.plot(sweep_df["threshold"], sweep_df["youden_j"], label=name)
+        ax.set_xlabel("Threshold"); ax.set_ylabel("Youden J (TPR + TNR − 1)")
+        ax.set_title("Combined Threshold Sweep (Val) — Youden J")
+        ax.legend()
+        fig.tight_layout(); fig.savefig(comb_dir / "combined_threshold_youden_val.png", dpi=220); plt.close(fig)
+
+    # ---- One-plot grouped bar chart for key TEST metrics ----
+    metrics_for_bars = ["accuracy", "f1", "roc_auc", "pr_auc", "balanced_accuracy", "mcc"]
+    fig_w = max(8.5, 1.2 * len(metrics_for_bars) * max(1, len(df_metrics["model"].unique())) / 3.0)
+    fig, ax = plt.subplots(figsize=(fig_w, 6))
+
+    models_list = df_metrics["model"].tolist()
+    x = np.arange(len(metrics_for_bars), dtype=float)
+    width = max(0.8 / max(1, len(models_list)), 0.08)  # keep bars readable
+
+    for i, m in enumerate(models_list):
+        row = df_metrics[df_metrics["model"] == m].iloc[0]
+        vals = [row.get(k, np.nan) if pd.notna(row.get(k, np.nan)) else 0.0 for k in metrics_for_bars]
+        ax.bar(x + i*width, vals, width, label=m)
+
+    ax.set_xticks(x + (len(models_list)-1)*width/2)
+    ax.set_xticklabels(metrics_for_bars, rotation=20)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Score")
+    ax.set_title("Combined Metrics (Test) — single chart")
+    ax.legend(ncols=2)
+    fig.tight_layout(); fig.savefig(comb_dir / "combined_metrics_bar_test.png", dpi=220); plt.close(fig)
+
+def _normalize_importance(v: np.ndarray) -> np.ndarray:
+    v = np.asarray(v, dtype=float)
+    vmax = np.nanmax(v) if v.size else 0.0
+    vmin = np.nanmin(v) if v.size else 0.0
+    if not np.isfinite(vmax) or vmax == vmin:
+        return np.zeros_like(v, dtype=float)
+    return (v - vmin) / (vmax - vmin)
+
+def build_combined_feature_importance_plots(results_root: Path, feature_names, model_to_fi, top_n=25):
+    """
+    model_to_fi: dict[str] -> np.ndarray (len = len(feature_names)), raw importances (abs-coef or tree FI).
+    Produces:
+      - combined_feature_importance_raw.csv
+      - combined_feature_importance_normalized.csv
+      - combined_feature_importance_heatmap_all.png
+      - combined_feature_importance_topN.png (grouped bar)
+    """
+    comb_dir = ensure_dir(results_root / "_combined")
+    models = list(model_to_fi.keys())
+    F = len(feature_names)
+
+    # Build matrices
+    raw_mat = np.vstack([model_to_fi[m] for m in models]) if models else np.zeros((0, F))
+    norm_mat = np.vstack([_normalize_importance(model_to_fi[m]) for m in models]) if models else np.zeros((0, F))
+
+    # Save CSVs (features as rows, models as columns)
+    df_raw = pd.DataFrame(raw_mat.T, index=feature_names, columns=models)
+    df_norm = pd.DataFrame(norm_mat.T, index=feature_names, columns=models)
+    df_raw.to_csv(comb_dir / "combined_feature_importance_raw.csv")
+    df_norm.to_csv(comb_dir / "combined_feature_importance_normalized.csv")
+
+    # Heatmap for ALL features (normalized)
+    if F > 0 and len(models) > 0:
+        # Figure size scales with features and models
+        fig_w = max(8.0, 0.5 * len(models))
+        fig_h = max(6.0, 0.2 * F)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        im = ax.imshow(df_norm.values, aspect="auto", interpolation="nearest")
+        ax.set_yticks(np.arange(F))
+        ax.set_yticklabels(feature_names)
+        ax.set_xticks(np.arange(len(models)))
+        ax.set_xticklabels(models, rotation=30, ha="right")
+        ax.set_title("Feature Importance — All features across models (normalized)")
+        fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
+        fig.tight_layout(); fig.savefig(comb_dir / "combined_feature_importance_heatmap_all.png", dpi=220); plt.close(fig)
+
+        # Grouped bar for Top-N features by mean normalized importance
+        mean_norm = np.nanmean(df_norm.values, axis=1)
+        top_n = min(top_n, F) if top_n and top_n > 0 else F
+        idx = np.argsort(mean_norm)[-top_n:]
+        top_feats = [feature_names[i] for i in idx]
+        x = np.arange(top_n, dtype=float)
+        width = max(0.8 / max(1, len(models)), 0.06)
+
+        fig_w2 = max(10.0, 0.5 * top_n)
+        fig, ax = plt.subplots(figsize=(fig_w2, 6))
+        for i, m in enumerate(models):
+            ax.bar(x + i*width, df_norm.values[idx, i], width, label=m)
+        ax.set_xticks(x + (len(models)-1)*width/2)
+        ax.set_xticklabels(top_feats, rotation=30, ha="right")
+        ax.set_ylim(0, 1.05)
+        ax.set_ylabel("Normalized importance (0–1)")
+        ax.set_title(f"Feature Importance — Top-{top_n} features across models (normalized)")
+        ax.legend(ncols=2)
+        fig.tight_layout(); fig.savefig(comb_dir / "combined_feature_importance_topN.png", dpi=220); plt.close(fig)
+
+# ====================== /ADDITIVE HELPERS ======================
+
 def main():
     cfg = CONFIG
     data_csv = Path(cfg["data_csv"])
@@ -330,6 +523,12 @@ def main():
     print(f"[INFO] Class weights (0,1): {cls_w}")
 
     models = build_models(rs)
+
+    # --------- ADDITIVE ACCUMULATORS FOR COMBINED ARTIFACTS ---------
+    combined_curves = []     # holds arrays for plotting per model
+    combined_rows = []       # holds a single row of test metrics per model
+    combined_fi = {}         # model_name -> np.array feature importances aligned to feature_cols
+    # ---------------------------------------------------------------
 
     for name, model in models.items():
         print(f"\n===== Training: {name} =====")
@@ -425,7 +624,13 @@ def main():
             except Exception:
                 pass
 
+        # -------- Feature Importances (per-model artifacts as before) --------
         fi = feature_importance(model, np.array(feature_cols))
+        # Build aligned vector for combined use, even if None
+        fi_vector = np.zeros(len(feature_cols), dtype=float)
+        fi_map_for_json = {feat: 0.0 for feat in feature_cols}
+        fi_map_norm_for_json = {feat: 0.0 for feat in feature_cols}
+
         if fi is not None:
             fnames, fvals = fi
             df_fi = pd.DataFrame({"feature": fnames, "importance": fvals}).sort_values("importance", ascending=False)
@@ -437,6 +642,61 @@ def main():
             ax.set_title(f"Feature Importances: {name}")
             ax.set_xlabel("Importance")
             fig.tight_layout(); fig.savefig(rdir / "feature_importance.png", dpi=200); plt.close(fig)
+
+            # Align vector to master feature_cols order
+            tmp = dict(zip(fnames, fvals))
+            fi_vector = np.array([float(tmp.get(f, 0.0)) for f in feature_cols], dtype=float)
+
+            # JSON maps (raw + normalized)
+            fi_map_for_json = {f: float(tmp.get(f, 0.0)) for f in feature_cols}
+            norm_vec = _normalize_importance(fi_vector)
+            fi_map_norm_for_json = {f: float(v) for f, v in zip(feature_cols, norm_vec)}
+
+        # Save other_metrics.json (confusion + feature importance)
+        other = {
+            "confusion_metrics": {
+                "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),
+                "tpr_recall": float(tp / (tp + fn) if (tp + fn) else 0.0),
+                "tnr_specificity": float(tn / (tn + fp) if (tn + fp) else 0.0),
+                "fpr": float(fp / (fp + tn) if (fp + tn) else 0.0),
+                "fnr": float(fn / (fn + tp) if (fn + tp) else 0.0),
+                "precision": float(precision_score(y_test, yhat_test, zero_division=0)),
+                "recall": float(recall_score(y_test, yhat_test)),
+                "balanced_accuracy": float(balanced_accuracy_score(y_test, yhat_test))
+            },
+            "feature_importance": {
+                "raw": fi_map_for_json,
+                "normalized": fi_map_norm_for_json
+            }
+        }
+        save_json(other, rdir / "other_metrics.json")
+
+        # Accumulate for combined artifacts
+        combined_curves.append({
+            "name": name,
+            "y_test": y_test,
+            "score_test": s_test,   # ROC/PR (prob or decision function or y_pred fallback)
+            "proba_test": p_test,   # Calibration (None if not supported)
+            "proba_val":  p_val,    # Threshold sweeps on VAL (None if not supported)
+        })
+        combined_rows.append({
+            "model": name,
+            "samples": m_test["samples"],
+            "accuracy": m_test["accuracy"],
+            "precision": m_test["precision"],
+            "recall": m_test["recall"],
+            "f1": m_test["f1"],
+            "balanced_accuracy": m_test["balanced_accuracy"],
+            "mcc": m_test["mcc"],
+            "kappa": m_test["kappa"],
+            "roc_auc": m_test["roc_auc"],
+            "pr_auc": m_test["pr_auc"],
+            "specificity": m_test["specificity"],
+            "brier": m_test["brier"],
+            "ece": m_test["ece"],
+            "log_loss_ce": m_test["log_loss_ce"],
+        })
+        combined_fi[name] = fi_vector
 
         gaps = {
             "acc_gap_train_val": float(m_train["accuracy"] - m_val["accuracy"]),
@@ -450,6 +710,13 @@ def main():
 
         print(f"[OK] Saved model -> {mdir}")
         print(f"[OK] Saved results -> {rdir}")
+
+    # -------- Emit combined plots, metrics, and cross-model FI comparisons --------
+    finalize_multi_model_plots(results_root, combined_curves, combined_rows, y_val, cfg)
+    build_combined_feature_importance_plots(
+        results_root, feature_cols, combined_fi, top_n=cfg.get("fi_top_n", 25)
+    )
+    print(f"[OK] Combined plots & tables -> {results_root / '_combined'}")
 
     print("\n[DONE] All models trained and diagnostics saved.")
 
